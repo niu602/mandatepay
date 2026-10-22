@@ -17,14 +17,13 @@
 | 后端 | FastAPI + Python | ✅ 已跑通 |
 | 支付 | PayPal Orders v2 REST（Web 流）+ Agent Toolkit（Agent 流） | ✅ **两条均已跑通** |
 | 模型 | DeepSeek-V3（意图解析，function calling） | ✅ 已接入（无 Key 时自动降级规则解析） |
-| 数据库 | **SQLite**（开发期）→ PostgreSQL（Render 部署时） | ⚠️ 见下方说明 |
+| 数据库 | **PostgreSQL 16**（`DATABASE_URL` 驱动，留空即回退 SQLite） | ✅ 已切换并回归 |
 | 前端 | `static/` 原生 HTML（支付页 + 审计页） | ✅ 已可用 |
 | MCP | @paypal/mcp | ⏳ P1 可选，冲奖用 |
 
-> **数据库偏差说明（需确认）**：交接指示 §二 把数据库锁定为 PostgreSQL（Render 免费层）。
-> 当前实现用的是 **SQLite** —— 开发期零配置、单文件、Demo 现场不易翻车。
-> 持久化接口集中在 `agent/store.py`（save/load/list/update），换 PostgreSQL 只需改这一个文件，
-> 不扩散到业务逻辑。若在 Render 部署前需要切 PG，改这一个文件 + 装 `psycopg2` 即可。
+> **数据库**：通过 `DATABASE_URL` 切换后端，业务代码零改动。
+> 填 `postgresql://...` 走 PostgreSQL，留空走 SQLite。
+> 建表 `python scripts/init_db.py`，迁移 `python scripts/migrate_sqlite_to_pg.py`。详见 [WEEK1_REVIEW.md](WEEK1_REVIEW.md) §四。
 
 ## 目录结构
 
@@ -41,13 +40,19 @@ paypal-ai-hackathon/
 │   ├── llm_intent.py      # DeepSeek function calling 解析器
 │   ├── paypal_tools.py    # PayPal Agent Toolkit 薄封装 — Agent 流
 │   ├── graph.py           # 五节点状态机 parse→validate→approve→pay→verify
-│   ├── store.py           # SQLite 持久化（约束 / 请求 / 审计日志）
+│   ├── store.py           # 持久化（双后端：PostgreSQL / SQLite）
 │   ├── e2e_check.py       # 支付闭环校验脚本
 │   └── demo.py            # 四场景端到端演示
+├── scripts/
+│   ├── init_db.py                # 幂等建表（按后端自动选 schema）
+│   ├── migrate_sqlite_to_pg.py   # SQLite → PostgreSQL 数据迁移
+│   └── setup_webhook.py          # REST API 管理 Webhook 订阅
 ├── static/
 │   ├── index.html         # PayPal JS SDK 支付按钮页（Web 流）
 │   └── audit.html         # 三层 Mandate 审计页 + 人工确认入口
-├── mandatepay.db          # SQLite（已 gitignore）
+├── mandatepay.db          # SQLite 备份（已 gitignore）
+├── WEEK1_REVIEW.md        # 第 1 周复盘（D1-D7）
+├── LICENSE                # MIT（年份/作者为占位符，需替换）
 ├── .env / .env.example
 └── README.md
 ```
@@ -107,6 +112,12 @@ python -m agent.e2e_check --capture <ORDER_ID>
 cd D:\paypal-ai-hackathon
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+
+# 数据库（PostgreSQL；跳过则用 SQLite，无需额外配置）
+createdb -U postgres -h 127.0.0.1 mandatepay
+python scripts/init_db.py
+
+# 起服务
 python -m uvicorn app.main:app --port 8888
 ```
 
@@ -121,20 +132,67 @@ python -m uvicorn app.main:app --port 8888
 | GET | `/audit` | 审计页 |
 | POST | `/api/create-order` | 创建订单（Web 流） |
 | POST | `/api/capture-order/{id}` | 捕获订单（Web 流） |
-| POST | `/api/webhook` | Webhook 回调（骨架，待补签名校验） |
+| POST | `/api/webhook` | PayPal 回调（**已做官方签名校验**） |
 | POST | `/api/agent/constraints` | 设定约束 |
 | POST | `/api/agent/requests` | 提交采购（校验→Mandate→真实下单） |
 | POST | `/api/mandates/confirm` | 人付款后捕获并置 COMPLETED |
 | GET | `/api/mandates` | 三层 Mandate 审计日志 |
 | GET | `/api/constraints/current` | 当前生效约束 |
+| GET | `/api/webhook/events` | Webhook 事件审计日志 |
+| GET | `/api/health` | 健康检查（含 `db_backend`、webhook 配置状态） |
 
-## 需订阅的 Webhook 事件
+## Webhook（D6 已完成）
 
-```json
-["PAYMENT.CAPTURE.COMPLETED", "PAYMENT.CAPTURE.DENIED", "CHECKOUT.ORDER.APPROVED", "CHECKOUT.ORDER.COMPLETED"]
+### 订阅的 4 个事件
+
+```
+PAYMENT.CAPTURE.COMPLETED   ← 钱真正到账，MandatePay 的闭环终点
+CHECKOUT.ORDER.APPROVED     ← 买家批准订单（尚未扣款）
+PAYMENT.CAPTURE.DENIED      ← 扣款被拒
+PAYMENT.CAPTURE.PENDING     ← 扣款挂起
 ```
 
-本地调试需公网 URL：`ngrok http 8888`。
+### 签名校验（已实现）
+
+`/api/webhook` 按官方方式校验 `PAYPAL-TRANSMISSION-ID` / `-SIG` / `-TIME` / `-CERT-URL` / `-AUTH-ALGO` 五个头
++ `PAYPAL_WEBHOOK_ID`，调 `POST /v1/notifications/verify-webhook-signature` 验签。**验签通过才处理事件**。
+
+| 状态码 | 含义 |
+|---|---|
+| 200 | 已接收并处理（重复事件返回 `duplicate: true`） |
+| 400 | 缺少 transmission-* 头 / body 非 JSON |
+| 401 | 签名校验失败（疑似伪造请求） |
+| 500 | 服务端未配置 `PAYPAL_WEBHOOK_ID` |
+| 503 | 无法连通 PayPal 验签接口 |
+
+事件按 `event_id` 幂等入库（`webhook_events` 表），`PAYMENT.CAPTURE.COMPLETED` 会把对应 mandate 置为 `COMPLETED`。
+
+### 本地联调步骤
+
+```bash
+# 1) 起服务（应用监听 8888）
+python -m uvicorn app.main:app --port 8888
+
+# 2) 起公网隧道（端口必须与服务监听端口一致 = 8888）
+tmole 8888                      # 或 ngrok http 8888
+# 输出形如 https://xxxx.tunnelmole.net
+
+# 3) 注册 Webhook 并订阅 4 个事件（无需手点 Dashboard）
+python scripts/setup_webhook.py --create --url https://xxxx.tunnelmole.net/api/webhook
+# 脚本会把返回的 webhook id 自动写进 .env 的 PAYPAL_WEBHOOK_ID
+
+# 4) 重启服务后确认
+curl http://127.0.0.1:8888/api/health      # webhook_id_configured 应为 true
+
+# 5) 验证隧道真的转发到服务
+curl https://xxxx.tunnelmole.net/api/health
+
+# 6) 可选：本地跳过验签跑通事件处理逻辑（仅开发用，PAYPAL_MODE=live 时强制失效）
+PAYPAL_WEBHOOK_SKIP_VERIFY=true python -m uvicorn app.main:app --port 8888
+```
+
+> ⚠️ **隧道 URL 每次启动会变**（免费版随机子域名）。重启隧道后必须重注册：
+> `python scripts/setup_webhook.py --create --url <新URL> --force`
 
 ## 两条支付路径（重要，不要互相替代）
 
@@ -166,11 +224,11 @@ REST 路径已验证，绝不替换；两条并存向评委展示"PayPal 集成�
 - [x] Agent 流接真实 PayPal Agent Toolkit
 - [x] DeepSeek function calling（含无 Key 降级）
 - [x] 前端审计页 + 人工确认入口
-- [ ] （确认）SQLite → PostgreSQL 切换
-- [ ] Webhook 签名校验 + 公网隧道
+- [x] SQLite → PostgreSQL 切换（含迁移脚本，D1-D5 回归通过）
+- [x] Webhook 签名校验 + 公网隧道（4 事件订阅完成）
+- [x] git init + .gitignore + MIT LICENSE（**年份/作者为占位符，提交前替换**）
 - [ ] MCP Server 集成（P1 冲奖）
 - [ ] Demo 视频 ≤3 分钟（**录屏剪辑，不要现场直播**）
-- [ ] GitHub 公开仓库 + MIT license
 - [ ] 11/11 提前提交 Devpost
 
 ## 规则
