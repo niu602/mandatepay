@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MandatePay · 三层 Mandate 审计日志</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Microsoft YaHei", system-ui, sans-serif;
+      max-width: 1080px; margin: 32px auto; padding: 0 20px;
+      color: #1a2433; background: #f7f9fc; line-height: 1.6;
+    }
+    h1 { font-size: 24px; color: #003087; margin-bottom: 4px; }
+    .sub { color: #5a6b82; font-size: 14px; margin-bottom: 24px; }
+    .card {
+      background: #fff; border: 1px solid #dbe3ee; border-radius: 10px;
+      padding: 18px 20px; margin-bottom: 20px;
+    }
+    .card h2 { font-size: 16px; margin: 0 0 12px; color: #003087; }
+    .kv { display: flex; gap: 8px; font-size: 14px; margin-bottom: 6px; }
+    .kv .k { color: #5a6b82; min-width: 130px; }
+    .kv .v { color: #1a2433; font-weight: 500; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #eef2f7; vertical-align: top; }
+    th { color: #5a6b82; font-weight: 600; background: #fafbfd; }
+    .badge {
+      display: inline-block; padding: 2px 9px; border-radius: 11px;
+      font-size: 12px; font-weight: 600; white-space: nowrap;
+    }
+    .b-approved { background: #e6f4ea; color: #137333; }
+    .b-pending  { background: #fef7e0; color: #9a6700; }
+    .b-rejected { background: #fce8e6; color: #c5221f; }
+    .b-completed{ background: #e8f0fe; color: #1967d2; }
+    .layer { font-size: 12px; color: #3c4a5e; }
+    .layer b { color: #003087; }
+    .btn {
+      display: inline-block; padding: 6px 14px; border-radius: 6px;
+      background: #0070ba; color: #fff; text-decoration: none;
+      font-size: 13px; border: none; cursor: pointer;
+    }
+    .btn:hover { background: #005c9d; }
+    .btn:disabled { background: #b8c4d4; cursor: not-allowed; }
+    .btn-sm { padding: 4px 10px; font-size: 12px; }
+    .empty { color: #8a94a6; font-size: 14px; padding: 20px 0; }
+    .note {
+      background: #fff8e1; border-left: 3px solid #f9ab00;
+      padding: 10px 14px; font-size: 13px; color: #6b5300; margin-bottom: 20px;
+    }
+    #msg { font-size: 13px; margin-top: 10px; }
+    .ok { color: #137333; } .err { color: #c5221f; }
+  </style>
+</head>
+<body>
+  <h1>MandatePay · 三层 Mandate 审计日志</h1>
+  <div class="sub">让 AI 能安全地替人花钱 —— 每一笔交易都留下可审计的授权记录</div>
+
+  <div class="note">
+    <b>为什么需要「人确认」？</b> Agent 下单后订单状态为 <code>PAYER_ACTION_REQUIRED</code>，
+    必须人去 PayPal 完成付款才能扣款 —— 这是 MandatePay 的安全设计，不是缺陷。
+    AI 不能偷偷花钱，最终授权权在人手里（人授权 + 机器执行）。
+  </div>
+
+  <div class="card">
+    <h2>当前生效约束（Intent Mandate）</h2>
+    <div id="constraint">加载中……</div>
+  </div>
+
+  <div class="card">
+    <h2>采购审批</h2>
+    <div class="kv">
+      <span class="k">供应商</span>
+      <input id="p-vendor" value="Notion" style="width:120px">
+      <span class="k" style="min-width:60px">商品</span>
+      <input id="p-item" value="Notion Pro" style="width:150px">
+      <span class="k" style="min-width:60px">金额</span>
+      <input id="p-amount" type="number" value="10" style="width:80px">
+      <button class="btn" onclick="submitPurchase()">提交采购</button>
+    </div>
+    <div id="msg"></div>
+  </div>
+
+  <div class="card">
+    <h2>审计日志</h2>
+    <div id="mandates"><div class="empty">加载中……</div></div>
+  </div>
+
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function loadConstraint() {
+  try {
+    const r = await fetch('/api/constraints/current');
+    const c = await r.json();
+    const el = document.getElementById('constraint');
+    if (c.detail) { el.innerHTML = `<div class="empty">${esc(c.detail)}</div>`; return; }
+    el.innerHTML = `
+      <div class="kv"><span class="k">月度预算</span><span class="v">$${c.monthly_budget_usd}</span></div>
+      <div class="kv"><span class="k">单笔确认阈值</span><span class="v">$${c.single_tx_threshold_usd}</span></div>
+      <div class="kv"><span class="k">供应商白名单</span><span class="v">${(c.vendor_whitelist||[]).join(', ') || '—'}</span></div>
+      <div class="kv"><span class="k">品类白名单</span><span class="v">${(c.category_whitelist||[]).join(', ') || '—'}</span></div>`;
+  } catch (e) {
+    document.getElementById('constraint').innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`;
+  }
+}
+
+async function loadMandates() {
+  try {
+    const r = await fetch('/api/mandates?limit=50');
+    const d = await r.json();
+    const el = document.getElementById('mandates');
+    if (!d.items || !d.items.length) { el.innerHTML = '<div class="empty">暂无记录</div>'; return; }
+    const rows = d.items.map(m => {
+      const cls = 'b-' + (m.status||'').toLowerCase();
+      const canConfirm = m.order_id && m.status !== 'COMPLETED' && m.status !== 'REJECTED';
+      const action = canConfirm
+        ? `<a class="btn btn-sm" href="https://www.sandbox.paypal.com/checkoutnow?token=${esc(m.order_id)}" target="_blank">去确认付款</a>
+           <button class="btn btn-sm" style="margin-top:4px" onclick="confirmPay('${esc(m.order_id)}','${esc(m.mandate_uuid)}')">我已付款·捕获</button>`
+        : (m.status === 'COMPLETED' ? '<span class="badge b-completed">已扣款</span>' : '—');
+      return `<tr>
+        <td>${esc((m.created_at||'').slice(0,19).replace('T',' '))}</td>
+        <td>
+          <div class="layer"><b>Intent</b> ${esc(m.intent)}</div>
+          <div class="layer"><b>Cart</b> ${esc(m.cart)}</div>
+          <div class="layer"><b>Payment</b> ${esc(m.payment)}</div>
+        </td>
+        <td><span class="badge ${cls}">${esc(m.status)}</span><div class="layer">${esc(m.decision||'')}</div></td>
+        <td style="font-size:12px">${m.order_id ? esc(m.order_id) : '—'}<br>${m.capture_id ? 'cap:'+esc(m.capture_id):''}</td>
+        <td>${action}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML = `<table>
+      <thead><tr><th>时间</th><th>三层 Mandate</th><th>状态</th><th>PayPal</th><th>操作</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+  } catch (e) {
+    document.getElementById('mandates').innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`;
+  }
+}
+
+async function submitPurchase() {
+  const msg = document.getElementById('msg');
+  msg.className = ''; msg.textContent = '提交中……';
+  const body = {
+    vendor: document.getElementById('p-vendor').value,
+    item: document.getElementById('p-item').value,
+    amount_usd: parseFloat(document.getElementById('p-amount').value)
+  };
+  try {
+    const r = await fetch('/api/agent/requests', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    msg.className = r.ok ? 'ok' : 'err';
+    msg.textContent = `${d.decision} — ${d.reason}`;
+    loadMandates();
+  } catch (e) { msg.className = 'err'; msg.textContent = '提交失败: ' + e; }
+}
+
+async function confirmPay(orderId, mandateUuid) {
+  const msg = document.getElementById('msg');
+  msg.className = ''; msg.textContent = '捕获中……';
+  try {
+    const r = await fetch('/api/mandates/confirm', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({order_id: orderId, mandate_uuid: mandateUuid})
+    });
+    const d = await r.json();
+    msg.className = d.completed ? 'ok' : 'err';
+    msg.textContent = d.completed
+      ? `✅ 闭环完成 —— capture ${d.capture_id}`
+      : `未捕获成功（状态 ${d.status}）。请确认已在 PayPal 页面点完「完成购买」。`;
+    loadMandates();
+  } catch (e) { msg.className = 'err'; msg.textContent = '捕获失败: ' + e; }
+}
+
+loadConstraint();
+loadMandates();
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+fastapi==0.115.*
+uvicorn[standard]
+requests
+python-dotenv
+
+# Agent 层（LangGraph 状态机）
+langgraph>=1.2,<2
+langchain-core>=1.6,<2
+langchain>=1.4,<2
+
+# Agent 支付流：PayPal 官方 Agent Toolkit（orders/products/subscriptionPlans）
+paypal-agent-toolkit>=1.1
+
+# 意图解析：DeepSeek 兼容 OpenAI 协议（不配 Key 时自动降级规则解析）
+langchain-openai>=1.7,<2
+
+# 持久化：默认 SQLite（内置，无需额外依赖）
+# 设置 DATABASE_URL 切到 PostgreSQL 时才需要下面这个驱动
+psycopg[binary]>=3.3,<4

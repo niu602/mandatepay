@@ -1,0 +1,13 @@
+# 统一换行符：仓库内存 LF，检出时按平台转换
+* text=auto eol=lf
+
+# 二进制文件不做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.docx binary
+*.zip binary
+*.exe binary
+*.db binary
