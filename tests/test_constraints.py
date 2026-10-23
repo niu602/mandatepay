@@ -10,16 +10,17 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from agent.constraints import evaluate
+from agent.constraints import evaluate, SpendContext
 from agent.models import Constraint, Decision, PurchaseRequest
 
 
 @pytest.fixture
 def constraint() -> Constraint:
-    """基准约束：月预算 $200、单笔阈值 $50、供应商 Notion/Figma、品类 SaaS。"""
+    """基准约束：月预算 $200、单笔阈值 $50、日累计阈值 $100、供应商 Notion/Figma、品类 SaaS。"""
     return Constraint(
         monthly_budget_usd=200.0,
         single_tx_threshold_usd=50.0,
+        daily_threshold_usd=100.0,
         vendor_whitelist=["Notion", "Figma"],
         category_whitelist=["SaaS"],
     )
@@ -148,3 +149,63 @@ def test_decision_values_are_stable_strings():
     assert Decision.AUTO_APPROVE == "AUTO_APPROVE"
     assert Decision.REQUIRE_HUMAN == "REQUIRE_HUMAN"
     assert Decision.REJECT == "REJECT"
+
+
+# ---------------------------------------------------------------- D8：日累计阈值（软上限 → 需人工确认）
+
+def test_daily_threshold_triggers_require_human(constraint):
+    """今日已花 $80 + 本次 $30 = $110 > 日阈值 $100 → REQUIRE_HUMAN。"""
+    r = evaluate(req(amount=30.0), constraint, SpendContext(daily_usd=80.0))
+    assert r.decision == Decision.REQUIRE_HUMAN
+    assert "日累计阈值" in r.reason
+
+
+def test_daily_threshold_not_exceeded_is_auto_approve(constraint):
+    """今日已花 $80 + 本次 $10 = $90 ≤ 日阈值 $100，且单笔未超 → AUTO_APPROVE。"""
+    r = evaluate(req(amount=10.0), constraint, SpendContext(daily_usd=80.0))
+    assert r.decision == Decision.AUTO_APPROVE
+
+
+def test_daily_threshold_zero_means_no_limit(constraint):
+    """日阈值=0 表示不限制：即便今日已花很多，也不因日维度被拦。"""
+    c = Constraint(monthly_budget_usd=200.0, single_tx_threshold_usd=50.0, daily_threshold_usd=0.0)
+    r = evaluate(req(amount=10.0), c, SpendContext(daily_usd=9999.0))
+    assert r.decision == Decision.AUTO_APPROVE
+
+
+# ---------------------------------------------------------------- D8：月度滚动预算（硬上限，含已花费）
+
+def test_monthly_rolling_budget_exceeded_is_reject(constraint):
+    """本月已花 $150 + 本次 $60 = $210 > 月预算 $200 → REJECT（即便单笔/日都未超）。"""
+    r = evaluate(req(amount=60.0), constraint, SpendContext(monthly_usd=150.0))
+    assert r.decision == Decision.REJECT
+    assert "超出月度预算" in r.reason
+
+
+def test_monthly_rolling_budget_within_limit_is_approve(constraint):
+    """本月已花 $150 + 本次 $40 = $190 ≤ 预算 $200 → 通过预算，再走阈值分支。"""
+    r = evaluate(req(amount=40.0), constraint, SpendContext(monthly_usd=150.0))
+    assert r.decision != Decision.REJECT  # 没超预算；单笔 40<50 应 AUTO_APPROVE
+
+
+def test_monthly_budget_boundary_just_under(constraint):
+    """本月已花 $150 + 本次 $50 = $200 == 预算 → 不算超，走单笔阈值（$50 恰等于阈值→AUTO）。"""
+    r = evaluate(req(amount=50.0), constraint, SpendContext(monthly_usd=150.0))
+    assert r.decision == Decision.AUTO_APPROVE
+
+
+# ---------------------------------------------------------------- D8：校验顺序（含已花费维度）
+
+def test_budget_reject_precedes_daily_threshold(constraint):
+    """同时超月预算与超日阈值 → 优先报预算（顺序：白名单 → 预算 → 阈值）。"""
+    r = evaluate(req(amount=999.0), constraint, SpendContext(monthly_usd=150.0, daily_usd=80.0))
+    assert r.decision == Decision.REJECT
+    assert "预算" in r.reason
+    assert "日累计" not in r.reason
+
+
+def test_vendor_reject_precedes_budget_and_daily(constraint):
+    """供应商越界应优先于预算/日阈值被拒。"""
+    r = evaluate(req(vendor="Slack", amount=999.0), constraint, SpendContext(monthly_usd=150.0, daily_usd=80.0))
+    assert r.decision == Decision.REJECT
+    assert "不在白名单" in r.reason

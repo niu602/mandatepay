@@ -107,3 +107,71 @@ def capture_order(order_id: str) -> dict:
         "capture_id": capture_id,
         "raw": result,
     }
+
+
+# ── 供应商目录 / SaaS 订阅计划（P1 功能）──────────────────────────
+
+def create_product(name: str, description: str, product_type: str = "SERVICE") -> dict:
+    """在 PayPal 创建供应商（产品）。返回 {product_id, name, raw}。"""
+    tool = _get_tool("create_product")
+    raw = tool.invoke({"name": name, "description": description, "type": product_type})
+    prod = json.loads(raw) if isinstance(raw, str) else raw
+    return {"product_id": prod.get("id"), "name": name, "raw": prod}
+
+
+def list_products() -> list[dict]:
+    """列出 PayPal 中的供应商（产品）。"""
+    tool = _get_tool("list_products")
+    raw = tool.invoke({})
+    data = json.loads(raw) if isinstance(raw, str) else raw
+    return data.get("products", []) or []
+
+
+def create_subscription_plan(
+    product_id: str,
+    name: str,
+    amount_usd: float,
+    currency: str = "USD",
+    interval_unit: str = "MONTH",
+    interval_count: int = 1,
+    description: str | None = None,
+) -> dict:
+    """为某供应商创建 SaaS 订阅计划（如 Notion Pro $10/月）。
+
+    返回 {plan_id, name, raw}。billing_cycles / payment_preferences 按
+    PayPal Subscriptions 标准结构构造（单一定价周期 + 自动续费）。
+    """
+    tool = _get_tool("create_subscription_plan")
+    payload = {
+        "product_id": product_id,
+        "name": name,
+        "description": description or name,
+        "billing_cycles": [
+            {
+                "frequency": {"interval_unit": interval_unit, "interval_count": interval_count},
+                "tenure_type": "REGULAR",
+                "sequence": 1,
+                "total_cycles": 0,
+                "pricing_scheme": {
+                    "fixed_price": {"value": f"{amount_usd:.2f}", "currency_code": currency}
+                },
+            }
+        ],
+        "payment_preferences": {
+            "auto_bill_outstanding": True,
+            "setup_fee": {"value": "0", "currency_code": currency},
+            "setup_fee_failure_action": "CONTINUE",
+            "payment_failure_threshold": 3,
+        },
+    }
+    raw = tool.invoke(payload)
+    data = json.loads(raw) if isinstance(raw, str) else raw
+    return {"plan_id": data.get("id"), "name": name, "raw": data}
+
+
+def list_subscription_plans(product_id: str | None = None) -> list[dict]:
+    """列出订阅计划；传 product_id 则只列该供应商的计划。"""
+    tool = _get_tool("list_subscription_plans")
+    raw = tool.invoke({"product_id": product_id} if product_id else {})
+    data = json.loads(raw) if isinstance(raw, str) else raw
+    return data.get("plans", []) or []

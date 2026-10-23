@@ -23,10 +23,16 @@ def _now_iso() -> str:
 
 
 class Constraint(BaseModel):
-    """用户给 Agent 设定的花钱约束（Intent Mandate 的载体）。"""
+    """用户给 Agent 设定的花钱约束（Intent Mandate 的载体）。
 
-    monthly_budget_usd: float = Field(gt=0, description="月度预算上限，美元")
+    两类上限：
+    - 硬上限（违反直接 REJECT）：月度滚动预算、品类/供应商白名单
+    - 软上限（超过需人工确认 REQUIRE_HUMAN）：单笔阈值、日累计阈值
+    """
+
+    monthly_budget_usd: float = Field(gt=0, description="月度滚动预算上限，美元（统计当月已完成的花费）")
     single_tx_threshold_usd: float = Field(gt=0, description="单笔超过此金额需人工确认，美元")
+    daily_threshold_usd: float = Field(default=0.0, ge=0, description="日累计阈值，美元；0 表示不限制（超过则需人工确认）")
     vendor_whitelist: list[str] = Field(default_factory=list, description="供应商名称白名单")
     category_whitelist: list[str] = Field(default_factory=list, description="品类白名单")
 
@@ -86,6 +92,7 @@ class MandateRecord(BaseModel):
     decision: Decision | None = None  # 约束引擎给的原始结论，便于追溯
     order_id: str | None = None  # 真实支付成功后的 PayPal order id
     capture_id: str | None = None  # 捕获 id
+    amount_usd: float = 0.0  # 本笔交易金额，供月度/日累计预算统计
     created_at: str = Field(default_factory=_now_iso)
 
 
@@ -96,6 +103,7 @@ def build_mandate_trio(
     status: MandateStatus = MandateStatus.APPROVED,
     decision: Decision | None = None,
     trace_id: str | None = None,
+    amount_usd: float = 0.0,
 ) -> list[MandateRecord]:
     """按三层授权构造三条 Mandate 记录（共享同一 trace_id）。
 
@@ -107,13 +115,16 @@ def build_mandate_trio(
         MandateRecord(
             trace_id=trace, layer=MandateLayer.INTENT, content=intent,
             intent=intent, cart=cart, payment=payment, status=status, decision=decision,
+            amount_usd=amount_usd,
         ),
         MandateRecord(
             trace_id=trace, layer=MandateLayer.CART, content=cart,
             intent=intent, cart=cart, payment=payment, status=status, decision=decision,
+            amount_usd=amount_usd,
         ),
         MandateRecord(
             trace_id=trace, layer=MandateLayer.PAYMENT, content=payment,
             intent=intent, cart=cart, payment=payment, status=status, decision=decision,
+            amount_usd=amount_usd,
         ),
     ]

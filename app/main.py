@@ -257,8 +257,9 @@ def health():
 # 2. Agent 流：约束设定 + 采购执行（LangGraph 状态机）
 # ──────────────────────────────────────────────────────
 class ConstraintIn(BaseModel):
-    monthly_budget_usd: float = Field(gt=0, description="月度预算上限")
+    monthly_budget_usd: float = Field(gt=0, description="月度滚动预算上限")
     single_tx_threshold_usd: float = Field(gt=0, description="单笔超此金额需人工确认")
+    daily_threshold_usd: float = Field(default=0.0, ge=0, description="日累计阈值，0 表示不限制")
     vendor_whitelist: list[str] = Field(default_factory=list)
     category_whitelist: list[str] = Field(default_factory=list)
     session_id: str = "default"
@@ -276,6 +277,7 @@ def set_constraint(body: ConstraintIn):
     c = Constraint(
         monthly_budget_usd=body.monthly_budget_usd,
         single_tx_threshold_usd=body.single_tx_threshold_usd,
+        daily_threshold_usd=body.daily_threshold_usd,
         vendor_whitelist=body.vendor_whitelist,
         category_whitelist=body.category_whitelist,
     )
@@ -333,6 +335,7 @@ def submit_purchase(body: PurchaseIn):
     trio = build_mandate_trio(
         intent=f"采购 {req.item}（供应商 {req.vendor}）",
         cart=f"{req.item} × ${req.amount_usd:.2f} ({req.currency})",
+        amount_usd=req.amount_usd,
         payment=(
             "PayPal Sandbox · "
             + (
@@ -451,6 +454,88 @@ def current_constraint():
 
     c = store.load_latest_constraint()
     return c.model_dump() if c else {"detail": "尚未设定约束"}
+
+
+# ──────────────────────────────────────────────────────
+# 4. 供应商目录 / SaaS 订阅计划（P1：Agent 侧可查询）
+# ──────────────────────────────────────────────────────
+class ProductIn(BaseModel):
+    name: str
+    description: str = ""
+    product_type: str = "SERVICE"  # PHYSICAL / DIGITAL / SERVICE
+
+
+class PlanIn(BaseModel):
+    product_id: str = Field(description="PayPal 供应商(product) id")
+    name: str
+    amount_usd: float = Field(gt=0)
+    currency: str = "USD"
+    interval_unit: str = "MONTH"   # MONTH / WEEK / YEAR / DAY
+    interval_count: int = 1
+    description: str = ""
+
+
+@app.get("/api/catalog")
+def get_catalog():
+    """返回本地供应商目录与订阅计划 —— Agent 侧查询入口。
+
+    本地目录由 PayPal 同步（/api/catalog/sync）或显式创建而来，
+    Agent 无需每次采购都打 PayPal API，直接查本地即可。
+    """
+    from agent import store
+
+    return {
+        "vendors": store.list_vendors(),
+        "plans": store.list_subscription_plans(),
+    }
+
+
+@app.post("/api/catalog/sync")
+def sync_catalog():
+    """从 PayPal 拉取供应商与订阅计划，upsert 进本地目录。"""
+    from agent import store
+
+    result = store.sync_catalog_from_paypal()
+    return {"synced": result}
+
+
+@app.post("/api/catalog/products")
+def create_product(body: ProductIn):
+    """用 Toolkit 创建供应商（PayPal 产品）并写入本地目录。"""
+    from agent import store
+    from agent import paypal_tools
+
+    created = paypal_tools.create_product(body.name, body.description, body.product_type)
+    pid = created.get("product_id")
+    if not pid:
+        raise HTTPException(status_code=502, detail=f"PayPal 创建产品失败: {created}")
+    store.save_vendor(pid, body.name, body.description)
+    return {"product_id": pid, "name": body.name}
+
+
+@app.post("/api/catalog/plans")
+def create_plan(body: PlanIn):
+    """用 Toolkit 创建 SaaS 订阅计划并写入本地目录。"""
+    from agent import store
+    from agent import paypal_tools
+
+    created = paypal_tools.create_subscription_plan(
+        product_id=body.product_id,
+        name=body.name,
+        amount_usd=body.amount_usd,
+        currency=body.currency,
+        interval_unit=body.interval_unit,
+        interval_count=body.interval_count,
+        description=body.description,
+    )
+    plan_id = created.get("plan_id")
+    if not plan_id:
+        raise HTTPException(status_code=502, detail=f"PayPal 创建计划失败: {created}")
+    store.save_subscription_plan(
+        plan_id, body.product_id, body.name, body.amount_usd,
+        body.currency, body.interval_unit, body.interval_count, body.description,
+    )
+    return {"plan_id": plan_id, "name": body.name}
 
 
 class ConfirmIn(BaseModel):

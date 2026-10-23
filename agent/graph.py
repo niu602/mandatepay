@@ -64,12 +64,26 @@ def validate_node(state: AgentState) -> dict:
     不能只依赖 state["constraint"] —— 那是 LangGraph 检查点在「同一会话内」
     先发过 SET_CONSTRAINT 时才有的，换会话 / 用独立接口设约束 / 服务重启后
     都会丢，导致「未设定约束」误拒。DB 兜底保证任何来源设的约束都生效。
+
+    滚动预算/日累计阈值需要「已花费」统计，由 store 聚合后注入 SpendContext，
+    保持约束引擎纯函数（无 I/O）。
     """
+    from agent.constraints import SpendContext
+
     req = state.get("request")
     if req is None:
         return {"error": "没有采购请求可校验"}
     constraint = state.get("constraint") or store.load_latest_constraint()
-    result = evaluate(req, constraint)
+
+    now = _now_iso()
+    month_start = now[:7] + "-01T00:00:00+00:00"  # 本月 1 号 00:00 UTC
+    day_start = now[:10] + "T00:00:00+00:00"       # 今天 00:00 UTC
+    spend = SpendContext(
+        monthly_usd=store.sum_completed_amount(month_start),
+        daily_usd=store.sum_completed_amount(day_start),
+    )
+
+    result = evaluate(req, constraint, spend=spend)
     return {"decision": result.decision.value, "error": None if result.decision is not Decision.REJECT else result.reason}
 
 
@@ -88,6 +102,7 @@ def approve_node(state: AgentState) -> dict:
     trio = build_mandate_trio(
         intent=f"采购 {req.item}（供应商 {req.vendor}）",
         cart=f"{req.item} × ${req.amount_usd:.2f} ({req.currency})",
+        amount_usd=req.amount_usd,
         payment=(
             "PayPal Sandbox · "
             + (

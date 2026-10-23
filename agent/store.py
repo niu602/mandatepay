@@ -87,6 +87,26 @@ CREATE TABLE IF NOT EXISTS webhook_events (
     verified INTEGER NOT NULL DEFAULT 0,
     received_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS vendors (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    paypal_product_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS subscription_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    paypal_plan_id TEXT UNIQUE NOT NULL,
+    paypal_product_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    amount_usd REAL NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    interval_unit TEXT NOT NULL DEFAULT 'MONTH',
+    interval_count INTEGER NOT NULL DEFAULT 1,
+    description TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
 """
 
 _PG_SCHEMA = """
@@ -131,6 +151,26 @@ CREATE TABLE IF NOT EXISTS webhook_events (
     payload TEXT NOT NULL,
     verified SMALLINT NOT NULL DEFAULT 0,
     received_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS vendors (
+    id BIGSERIAL PRIMARY KEY,
+    paypal_product_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS subscription_plans (
+    id BIGSERIAL PRIMARY KEY,
+    paypal_plan_id TEXT UNIQUE NOT NULL,
+    paypal_product_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    amount_usd DOUBLE PRECISION NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'USD',
+    interval_unit TEXT NOT NULL DEFAULT 'MONTH',
+    interval_count INTEGER NOT NULL DEFAULT 1,
+    description TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
 );
 """
 
@@ -191,6 +231,7 @@ class _Conn:
         else:
             self._conn.executescript(_SQLITE_SCHEMA)
         self._upgrade_mandates()
+        self._upgrade_schema()
         return self
 
     def _upgrade_mandates(self) -> None:
@@ -215,6 +256,28 @@ class _Conn:
                     cur.execute(f"ALTER TABLE mandates ADD COLUMN {col} {ddl}")
         # 索引必须在列存在之后再建，否则旧库上报 UndefinedColumn
         cur.execute("CREATE INDEX IF NOT EXISTS idx_mandates_trace ON mandates(trace_id)")
+
+    def _upgrade_schema(self) -> None:
+        """幂等补齐 D8 新增列：constraints.daily_threshold_usd / mandates.amount_usd。"""
+        cur = self.cur()
+        # constraints: 日累计阈值
+        if self.is_pg:
+            cur.execute(
+                "ALTER TABLE constraints ADD COLUMN IF NOT EXISTS daily_threshold_usd DOUBLE PRECISION NOT NULL DEFAULT 0"
+            )
+        else:
+            existing = {r["name"] for r in cur.execute("PRAGMA table_info(constraints)").fetchall()}
+            if "daily_threshold_usd" not in existing:
+                cur.execute("ALTER TABLE constraints ADD COLUMN daily_threshold_usd REAL NOT NULL DEFAULT 0")
+        # mandates: 交易金额（供滚动预算/日累计统计）
+        if self.is_pg:
+            cur.execute(
+                "ALTER TABLE mandates ADD COLUMN IF NOT EXISTS amount_usd DOUBLE PRECISION NOT NULL DEFAULT 0"
+            )
+        else:
+            existing = {r["name"] for r in cur.execute("PRAGMA table_info(mandates)").fetchall()}
+            if "amount_usd" not in existing:
+                cur.execute("ALTER TABLE mandates ADD COLUMN amount_usd REAL NOT NULL DEFAULT 0")
 
     def __exit__(self, *exc):
         try:
@@ -247,10 +310,11 @@ def save_constraint(c: Constraint, created_at: str | None = None) -> int:
         cur = db.cur()
         if db.is_pg:
             row = cur.execute(
-                "INSERT INTO constraints (monthly_budget_usd, single_tx_threshold_usd, vendor_whitelist, category_whitelist, created_at) VALUES (?,?,?,?,?) RETURNING id",
+                "INSERT INTO constraints (monthly_budget_usd, single_tx_threshold_usd, daily_threshold_usd, vendor_whitelist, category_whitelist, created_at) VALUES (?,?,?,?,?,?) RETURNING id",
                 (
                     c.monthly_budget_usd,
                     c.single_tx_threshold_usd,
+                    c.daily_threshold_usd,
                     json.dumps(c.vendor_whitelist, ensure_ascii=False),
                     json.dumps(c.category_whitelist, ensure_ascii=False),
                     ts,
@@ -258,10 +322,11 @@ def save_constraint(c: Constraint, created_at: str | None = None) -> int:
             ).fetchone()
             return row["id"]
         cur.execute(
-            "INSERT INTO constraints (monthly_budget_usd, single_tx_threshold_usd, vendor_whitelist, category_whitelist, created_at) VALUES (?,?,?,?,?)",
+            "INSERT INTO constraints (monthly_budget_usd, single_tx_threshold_usd, daily_threshold_usd, vendor_whitelist, category_whitelist, created_at) VALUES (?,?,?,?,?,?)",
             (
                 c.monthly_budget_usd,
                 c.single_tx_threshold_usd,
+                c.daily_threshold_usd,
                 json.dumps(c.vendor_whitelist, ensure_ascii=False),
                 json.dumps(c.category_whitelist, ensure_ascii=False),
                 ts,
@@ -278,9 +343,129 @@ def load_latest_constraint() -> Constraint | None:
     return Constraint(
         monthly_budget_usd=row["monthly_budget_usd"],
         single_tx_threshold_usd=row["single_tx_threshold_usd"],
+        daily_threshold_usd=row.get("daily_threshold_usd", 0.0) or 0.0,
         vendor_whitelist=json.loads(row["vendor_whitelist"]),
         category_whitelist=json.loads(row["category_whitelist"]),
     )
+
+
+def sum_completed_amount(since_iso: str) -> float:
+    """统计 [since_iso, now) 区间内已完成支付（status=COMPLETED）的累计金额。
+
+    只取 `payment` 层，避免一笔交易的三层记录重复计数。
+    供约束引擎做月度滚动预算 / 日累计阈值判断。
+    """
+    with _Conn() as db:
+        row = db.cur().execute(
+            "SELECT COALESCE(SUM(amount_usd), 0) AS total FROM mandates "
+            "WHERE layer='payment' AND status='COMPLETED' AND created_at >= ?",
+            (since_iso,),
+        ).fetchone()
+    return float(row["total"]) if row else 0.0
+
+
+# ── 供应商目录 / SaaS 订阅计划（P1 功能）──────────────────────────────
+
+def save_vendor(paypal_product_id: str, name: str, description: str = "", category: str = "") -> None:
+    """写入/更新一个供应商（PayPal 产品）。paypal_product_id 唯一。"""
+    ts = _now()
+    with _Conn() as db:
+        cur = db.cur()
+        if db.is_pg:
+            cur.execute(
+                """INSERT INTO vendors (paypal_product_id, name, description, category, created_at)
+                   VALUES (?,?,?,?,?) ON CONFLICT (paypal_product_id) DO UPDATE SET
+                     name=EXCLUDED.name, description=EXCLUDED.description, category=EXCLUDED.category""",
+                (paypal_product_id, name, description, category, ts),
+            )
+        else:
+            cur.execute(
+                "INSERT OR REPLACE INTO vendors (paypal_product_id, name, description, category, created_at) VALUES (?,?,?,?,?)",
+                (paypal_product_id, name, description, category, ts),
+            )
+
+
+def list_vendors() -> list[dict]:
+    with _Conn() as db:
+        return db.cur().execute("SELECT * FROM vendors ORDER BY id").fetchall()
+
+
+def save_subscription_plan(
+    paypal_plan_id: str,
+    paypal_product_id: str,
+    name: str,
+    amount_usd: float,
+    currency: str = "USD",
+    interval_unit: str = "MONTH",
+    interval_count: int = 1,
+    description: str = "",
+) -> None:
+    """写入/更新一个订阅计划。paypal_plan_id 唯一。"""
+    ts = _now()
+    with _Conn() as db:
+        cur = db.cur()
+        if db.is_pg:
+            cur.execute(
+                """INSERT INTO subscription_plans
+                   (paypal_plan_id, paypal_product_id, name, amount_usd, currency, interval_unit, interval_count, description, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT (paypal_plan_id) DO UPDATE SET
+                     name=EXCLUDED.name, amount_usd=EXCLUDED.amount_usd, currency=EXCLUDED.currency,
+                     interval_unit=EXCLUDED.interval_unit, interval_count=EXCLUDED.interval_count,
+                     description=EXCLUDED.description""",
+                (paypal_plan_id, paypal_product_id, name, amount_usd, currency, interval_unit, interval_count, description, ts),
+            )
+        else:
+            cur.execute(
+                "INSERT OR REPLACE INTO subscription_plans (paypal_plan_id, paypal_product_id, name, amount_usd, currency, interval_unit, interval_count, description, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (paypal_plan_id, paypal_product_id, name, amount_usd, currency, interval_unit, interval_count, description, ts),
+            )
+
+
+def list_subscription_plans(product_id: str | None = None) -> list[dict]:
+    with _Conn() as db:
+        if product_id:
+            return db.cur().execute(
+                "SELECT * FROM subscription_plans WHERE paypal_product_id=? ORDER BY id", (product_id,)
+            ).fetchall()
+        return db.cur().execute("SELECT * FROM subscription_plans ORDER BY id").fetchall()
+
+
+def sync_catalog_from_paypal() -> dict:
+    """从 PayPal 拉取供应商与订阅计划，upsert 进本地目录（Agent 侧查询的数据源）。
+
+    返回 {vendors: int, plans: int} 同步条数。
+    """
+    from agent import paypal_tools
+
+    n_vendors = 0
+    n_plans = 0
+    for p in paypal_tools.list_products():
+        pid = p.get("id")
+        if not pid:
+            continue
+        save_vendor(pid, p.get("name", ""), p.get("description") or "", p.get("category") or "")
+        n_vendors += 1
+        for pl in paypal_tools.list_subscription_plans(product_id=pid):
+            plid = pl.get("id")
+            if not plid:
+                continue
+            # 取计划首个定价周期的金额
+            amount = 0.0
+            currency = "USD"
+            cycles = (pl.get("billing_cycles") or [])[:1]
+            if cycles:
+                price = cycles[0].get("pricing_scheme", {}).get("fixed_price", {})
+                try:
+                    amount = float(price.get("value", 0))
+                except (TypeError, ValueError):
+                    amount = 0.0
+                currency = price.get("currency_code") or "USD"
+            save_subscription_plan(
+                plid, pid, pl.get("name", ""), amount, currency,
+                description=pl.get("description") or "",
+            )
+            n_plans += 1
+    return {"vendors": n_vendors, "plans": n_plans}
 
 
 # ── PurchaseRequest ────────────────────────────────────
@@ -303,7 +488,7 @@ def save_request(r: PurchaseRequest, created_at: str | None = None) -> int:
 
 
 # ── MandateRecord（三层：intent / cart / payment 各一条）──────────────
-_COLS = "mandate_uuid, trace_id, layer, content, intent, cart, payment, status, decision, order_id, capture_id, created_at"
+_COLS = "mandate_uuid, trace_id, layer, content, intent, cart, payment, status, decision, order_id, capture_id, amount_usd, created_at"
 
 
 def _params(m: MandateRecord) -> tuple:
@@ -319,17 +504,19 @@ def _params(m: MandateRecord) -> tuple:
         m.decision.value if m.decision else None,
         m.order_id,
         m.capture_id,
+        m.amount_usd,
         m.created_at,
     )
 
 
 def save_mandate(m: MandateRecord) -> int:
     """写入单条 Mandate 记录。"""
+    placeholders = ",".join("?" * len(_COLS.split(",")))
     with _Conn() as db:
         cur = db.cur()
         if db.is_pg:
             row = cur.execute(
-                f"""INSERT INTO mandates ({_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                f"""INSERT INTO mandates ({_COLS}) VALUES ({placeholders})
                    ON CONFLICT (mandate_uuid) DO UPDATE SET
                      trace_id=EXCLUDED.trace_id, layer=EXCLUDED.layer, content=EXCLUDED.content,
                      intent=EXCLUDED.intent, cart=EXCLUDED.cart, payment=EXCLUDED.payment,
@@ -340,7 +527,7 @@ def save_mandate(m: MandateRecord) -> int:
             ).fetchone()
             return row["id"]
         cur.execute(
-            f"INSERT OR REPLACE INTO mandates ({_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            f"INSERT OR REPLACE INTO mandates ({_COLS}) VALUES ({placeholders})",
             _params(m),
         )
         return cur.lastrowid
