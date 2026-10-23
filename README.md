@@ -16,7 +16,7 @@
 | Agent | LangGraph（五节点状态机） | ✅ 已跑通 |
 | 后端 | FastAPI + Python | ✅ 已跑通 |
 | 支付 | PayPal Orders v2 REST（Web 流）+ Agent Toolkit（Agent 流） | ✅ **两条均已跑通** |
-| 模型 | DeepSeek-V3（意图解析，function calling） | ⏳ 代码已完成，**尚未配置 Key 实测**，当前走规则降级 |
+| 模型 | glm-5.3-flash（腾讯 MaaS，OpenAI 兼容） | ✅ **已实测**：function calling 6/6 正确 + 6/6 稳定 |
 | 数据库 | **PostgreSQL 16**（`DATABASE_URL` 驱动，留空即回退 SQLite） | ✅ 已切换并回归 |
 | 前端 | `static/` 原生 HTML（支付页 + 审计页） | ✅ 已可用 |
 | MCP | @paypal/mcp | ⏳ P1 可选，冲奖用 |
@@ -37,7 +37,7 @@ paypal-ai-hackathon/
 │   ├── models.py          # Constraint / PurchaseRequest / MandateRecord
 │   ├── constraints.py     # 约束引擎（纯函数，可单测）
 │   ├── intent.py          # 意图解析入口（LLM 优先，规则兜底）
-│   ├── llm_intent.py      # DeepSeek function calling 解析器
+│   ├── llm_intent.py      # LLM function calling 解析器（OpenAI 协议兼容，可换模型）
 │   ├── paypal_tools.py    # PayPal Agent Toolkit 薄封装 — Agent 流
 │   ├── graph.py           # 五节点状态机 parse→validate→approve→pay→verify
 │   ├── store.py           # 持久化（双后端：PostgreSQL / SQLite）
@@ -293,7 +293,7 @@ REST 路径已验证，绝不替换；两条并存向评委展示"PayPal 集成�
 - [x] 约束引擎（预算/白名单/阈值）+ **单元测试 16 例**（`python -m pytest tests/`）
 - [x] 三层 Mandate：一笔交易落 **3 条独立记录**（Intent/Cart/Payment，`trace_id` 串联）
 - [x] Agent 流接真实 PayPal Agent Toolkit
-- [ ] DeepSeek function calling（代码完成，**等 Key 实测**；当前规则降级）
+- [x] LLM function calling 意图解析（glm-5.3-flash 实测 6/6 正确 + 6/6 稳定）
 - [x] 前端审计页 + 人工确认入口
 - [x] SQLite → PostgreSQL 切换（含迁移脚本，D1-D5 回归通过）
 - [x] Webhook 签名校验 + 公网隧道（4 事件订阅完成）

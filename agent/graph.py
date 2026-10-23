@@ -58,11 +58,18 @@ def parse_node(state: AgentState) -> dict:
 
 
 def validate_node(state: AgentState) -> dict:
-    """节点 2：约束校验。"""
+    """节点 2：约束校验。
+
+    约束的唯一真相源是数据库（store.load_latest_constraint）。
+    不能只依赖 state["constraint"] —— 那是 LangGraph 检查点在「同一会话内」
+    先发过 SET_CONSTRAINT 时才有的，换会话 / 用独立接口设约束 / 服务重启后
+    都会丢，导致「未设定约束」误拒。DB 兜底保证任何来源设的约束都生效。
+    """
     req = state.get("request")
     if req is None:
         return {"error": "没有采购请求可校验"}
-    result = evaluate(req, state.get("constraint"))
+    constraint = state.get("constraint") or store.load_latest_constraint()
+    result = evaluate(req, constraint)
     return {"decision": result.decision.value, "error": None if result.decision is not Decision.REJECT else result.reason}
 
 
@@ -93,8 +100,12 @@ def approve_node(state: AgentState) -> dict:
         decision=Decision(decision) if decision in Decision._value2member_map_ else None,
     )
     store.save_mandates(trio)
-    # 以 Payment 层作代表行（状态更新会经 trace_id 同步三层）
-    return {"mandate": trio[-1]}
+    out: dict = {"mandate": trio[-1]}  # 以 Payment 层作代表行
+    if decision == "REJECT":
+        # 必须清掉上一轮 checkpoint 残留的 payment_result，否则 API 会返回
+        # 「decision=REJECT 却带着上一笔订单」的误导性结果（MemorySaver 会保留旧 state）。
+        out["payment_result"] = {"status": "SKIPPED", "reason": "被约束引擎拒绝，未创建订单"}
+    return out
 
 
 def pay_node(state: AgentState) -> dict:

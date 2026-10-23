@@ -50,10 +50,15 @@ def main() -> int:
 
     import os
 
-    if not (os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")):
-        print("❌ 未配置 DEEPSEEK_API_KEY，无法验证 LLM 路径（当前实际走规则降级）")
-        print("   在 .env 里加一行：DEEPSEEK_API_KEY=sk-xxxx")
+    if not (
+        os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
+    ):
+        print("❌ 未配置 LLM_API_KEY，无法验证 LLM 路径（当前实际走规则降级）")
+        print("   在 .env 里加：LLM_API_KEY=sk-xxxx  LLM_BASE_URL=...  LLM_MODEL=...")
         return 1
+
+    print(f"端点: {os.getenv('LLM_BASE_URL') or os.getenv('DEEPSEEK_BASE_URL') or 'https://api.deepseek.com'}")
+    print(f"模型: {os.getenv('LLM_MODEL') or os.getenv('DEEPSEEK_MODEL') or 'deepseek-chat'}")
 
     only = {int(x) for x in args.only.split(",") if x.strip()} if args.only else None
     cases = [(i, c) for i, c in enumerate(CASES, 1) if only is None or i in only]

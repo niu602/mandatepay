@@ -370,6 +370,69 @@ def submit_purchase(body: PurchaseIn):
     }
 
 
+class NLIn(BaseModel):
+    """自然语言入口：一句话驱动整条 Agent 链路。"""
+
+    text: str
+    session_id: str = "default"
+
+
+@app.post("/api/agent/parse")
+def agent_parse(body: NLIn):
+    """**自然语言 → 完整 LangGraph 五节点** 的端到端入口。
+
+    与 `/api/agent/requests` 的区别：后者收结构化 JSON、绕过状态机；
+    这里收自然语言，真实走 parse → validate → approve → pay → verify，
+    因此 LLM function calling 解析与三层 Mandate 审计都会真正生效。
+
+    注意：命中采购意图且通过校验时，pay 节点会创建**真实沙箱订单**。
+    """
+    from langchain_core.messages import HumanMessage
+
+    from agent import store
+    from agent.graph import graph
+
+    try:
+        final = graph.invoke(
+            {"messages": [HumanMessage(content=body.text)]},
+            {"configurable": {"thread_id": body.session_id}},
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Agent 执行失败: {exc}")
+
+    mandate = final.get("mandate")
+    out_mandate = None
+    if mandate is not None:
+        out_mandate = mandate.model_dump(mode="json")
+        # 附带同 trace 的三层原始记录，便于前端逐层展示审计链
+        out_mandate["layers"] = [
+            {
+                "layer": r["layer"],
+                "content": r.get("content", ""),
+                "status": r["status"],
+                "mandate_uuid": r["mandate_uuid"],
+                "created_at": r["created_at"],
+            }
+            for r in store.list_mandate_layers(mandate.trace_id)
+        ]
+
+    # 纯约束设定不涉及支付，清掉 checkpoint 可能残留的上一笔 payment_result
+    decision = final.get("decision")
+    payment = final.get("payment_result")
+    if decision == "PARSED_CONSTRAINT":
+        payment = None
+
+    return {
+        "text": body.text,
+        "decision": decision,
+        "error": final.get("error"),
+        "constraint": final.get("constraint").model_dump() if final.get("constraint") else None,
+        "request": final.get("request").model_dump() if final.get("request") else None,
+        "mandate": out_mandate,
+        "payment_result": payment,
+    }
+
+
 # ──────────────────────────────────────────────────────
 # 3. 审计日志与当前约束
 # ──────────────────────────────────────────────────────
