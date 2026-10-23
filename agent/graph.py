@@ -18,7 +18,14 @@ from langgraph.graph import END, StateGraph
 
 from .constraints import Decision, evaluate
 from .intent import Intent, parse
-from .models import Constraint, MandateRecord, MandateStatus, PurchaseRequest, _now_iso
+from .models import (
+    Constraint,
+    MandateRecord,
+    MandateStatus,
+    PurchaseRequest,
+    build_mandate_trio,
+    _now_iso,
+)
 from .paypal_tools import create_order as paypal_create_order
 from . import store
 
@@ -70,15 +77,24 @@ def approve_node(state: AgentState) -> dict:
         "REJECT": MandateStatus.REJECTED,
     }.get(decision, MandateStatus.REJECTED)
 
-    mandate = MandateRecord(
+    # 一笔交易落三条：Intent / Cart / Payment 各一条，共享 trace_id
+    trio = build_mandate_trio(
         intent=f"采购 {req.item}（供应商 {req.vendor}）",
         cart=f"{req.item} × ${req.amount_usd:.2f} ({req.currency})",
-        payment=f"PayPal Sandbox · {'自动扣款' if decision == 'AUTO_APPROVE' else ('人工确认后扣款' if decision == 'REQUIRE_HUMAN' else '未扣款')}",
+        payment=(
+            "PayPal Sandbox · "
+            + (
+                "自动扣款"
+                if decision == "AUTO_APPROVE"
+                else ("人工确认后扣款" if decision == "REQUIRE_HUMAN" else "未扣款")
+            )
+        ),
         status=status,
         decision=Decision(decision) if decision in Decision._value2member_map_ else None,
     )
-    store.save_mandate(mandate)
-    return {"mandate": mandate}
+    store.save_mandates(trio)
+    # 以 Payment 层作代表行（状态更新会经 trace_id 同步三层）
+    return {"mandate": trio[-1]}
 
 
 def pay_node(state: AgentState) -> dict:

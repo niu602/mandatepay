@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
 CREATE TABLE IF NOT EXISTS mandates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     mandate_uuid TEXT UNIQUE NOT NULL,
+    trace_id TEXT NOT NULL DEFAULT '',
+    layer TEXT NOT NULL DEFAULT 'intent',
+    content TEXT NOT NULL DEFAULT '',
     intent TEXT NOT NULL,
     cart TEXT NOT NULL,
     payment TEXT NOT NULL,
@@ -108,6 +111,9 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
 CREATE TABLE IF NOT EXISTS mandates (
     id BIGSERIAL PRIMARY KEY,
     mandate_uuid TEXT UNIQUE NOT NULL,
+    trace_id TEXT NOT NULL DEFAULT '',
+    layer TEXT NOT NULL DEFAULT 'intent',
+    content TEXT NOT NULL DEFAULT '',
     intent TEXT NOT NULL,
     cart TEXT NOT NULL,
     payment TEXT NOT NULL,
@@ -184,7 +190,31 @@ class _Conn:
             self._conn.execute(_PG_SCHEMA)
         else:
             self._conn.executescript(_SQLITE_SCHEMA)
+        self._upgrade_mandates()
         return self
+
+    def _upgrade_mandates(self) -> None:
+        """幂等补齐 mandates 表的分层列（trace_id / layer / content）。
+
+        建表语句是 CREATE TABLE IF NOT EXISTS，对**已存在**的旧表不会加列，
+        所以三层 Mandate 改造必须靠这里做在线迁移，否则旧库直接崩。
+        """
+        adds = (
+            ("trace_id", "TEXT NOT NULL DEFAULT ''"),
+            ("layer", "TEXT NOT NULL DEFAULT 'intent'"),
+            ("content", "TEXT NOT NULL DEFAULT ''"),
+        )
+        cur = self.cur()
+        if self.is_pg:
+            for col, ddl in adds:
+                cur.execute(f"ALTER TABLE mandates ADD COLUMN IF NOT EXISTS {col} {ddl}")
+        else:
+            existing = {r["name"] for r in cur.execute("PRAGMA table_info(mandates)").fetchall()}
+            for col, ddl in adds:
+                if col not in existing:
+                    cur.execute(f"ALTER TABLE mandates ADD COLUMN {col} {ddl}")
+        # 索引必须在列存在之后再建，否则旧库上报 UndefinedColumn
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_mandates_trace ON mandates(trace_id)")
 
     def __exit__(self, *exc):
         try:
@@ -272,10 +302,16 @@ def save_request(r: PurchaseRequest, created_at: str | None = None) -> int:
         return cur.lastrowid
 
 
-# ── MandateRecord ──────────────────────────────────────
-def save_mandate(m: MandateRecord) -> int:
-    params = (
+# ── MandateRecord（三层：intent / cart / payment 各一条）──────────────
+_COLS = "mandate_uuid, trace_id, layer, content, intent, cart, payment, status, decision, order_id, capture_id, created_at"
+
+
+def _params(m: MandateRecord) -> tuple:
+    return (
         m.id,
+        m.trace_id,
+        m.layer.value,
+        m.content,
         m.intent,
         m.cart,
         m.payment,
@@ -285,25 +321,47 @@ def save_mandate(m: MandateRecord) -> int:
         m.capture_id,
         m.created_at,
     )
+
+
+def save_mandate(m: MandateRecord) -> int:
+    """写入单条 Mandate 记录。"""
     with _Conn() as db:
         cur = db.cur()
         if db.is_pg:
             row = cur.execute(
-                """INSERT INTO mandates (mandate_uuid, intent, cart, payment, status, decision, order_id, capture_id, created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?)
+                f"""INSERT INTO mandates ({_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT (mandate_uuid) DO UPDATE SET
+                     trace_id=EXCLUDED.trace_id, layer=EXCLUDED.layer, content=EXCLUDED.content,
                      intent=EXCLUDED.intent, cart=EXCLUDED.cart, payment=EXCLUDED.payment,
                      status=EXCLUDED.status, decision=EXCLUDED.decision,
                      order_id=EXCLUDED.order_id, capture_id=EXCLUDED.capture_id
                    RETURNING id""",
-                params,
+                _params(m),
             ).fetchone()
             return row["id"]
         cur.execute(
-            "INSERT OR REPLACE INTO mandates (mandate_uuid, intent, cart, payment, status, decision, order_id, capture_id, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-            params,
+            f"INSERT OR REPLACE INTO mandates ({_COLS}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            _params(m),
         )
         return cur.lastrowid
+
+
+def save_mandates(trio: list[MandateRecord]) -> int:
+    """一次交易写入三条 Mandate 记录（Intent / Cart / Payment 各一条）。返回首条 id。"""
+    if not trio:
+        raise ValueError("trio 不能为空")
+    first = save_mandate(trio[0])
+    for m in trio[1:]:
+        save_mandate(m)
+    return first
+
+
+def _trace_of_mandate(mandate_uuid: str) -> str | None:
+    with _Conn() as db:
+        row = db.cur().execute(
+            "SELECT trace_id FROM mandates WHERE mandate_uuid=?", (mandate_uuid,)
+        ).fetchone()
+    return row["trace_id"] if row else None
 
 
 def update_mandate_status(
@@ -312,11 +370,23 @@ def update_mandate_status(
     order_id: str | None = None,
     capture_id: str | None = None,
 ) -> None:
+    """按 mandate_uuid 定位，但**整笔交易三层同步更新状态**。
+
+    三层 Mandate 属于同一笔交易，状态必须一致 —— 只更新一条会导致审计页出现
+    「Payment 层 COMPLETED 但 Intent 层还 APPROVED」的假象。
+    """
+    trace_id = _trace_of_mandate(mandate_uuid)
     with _Conn() as db:
-        db.cur().execute(
-            "UPDATE mandates SET status=?, order_id=COALESCE(?, order_id), capture_id=COALESCE(?, capture_id) WHERE mandate_uuid=?",
-            (status, order_id, capture_id, mandate_uuid),
-        )
+        if trace_id:
+            db.cur().execute(
+                "UPDATE mandates SET status=?, order_id=COALESCE(?, order_id), capture_id=COALESCE(?, capture_id) WHERE trace_id=?",
+                (status, order_id, capture_id, trace_id),
+            )
+        else:
+            db.cur().execute(
+                "UPDATE mandates SET status=?, order_id=COALESCE(?, order_id), capture_id=COALESCE(?, capture_id) WHERE mandate_uuid=?",
+                (status, order_id, capture_id, mandate_uuid),
+            )
 
 
 def update_mandate_by_order(
@@ -324,24 +394,92 @@ def update_mandate_by_order(
     status: str,
     capture_id: str | None = None,
 ) -> int:
-    """按 PayPal order_id 定位 mandate 并更新 —— Webhook 回调用。返回受影响行数。"""
+    """按 PayPal order_id 定位 mandate 并更新三层 —— Webhook 回调用。返回受影响行数。"""
     with _Conn() as db:
         cur = db.cur()
-        cur.execute(
-            "UPDATE mandates SET status=?, capture_id=COALESCE(?, capture_id) WHERE order_id=?",
-            (status, capture_id, order_id),
-        )
+        row = cur.execute("SELECT trace_id FROM mandates WHERE order_id=?", (order_id,)).fetchone()
+        if row and row["trace_id"]:
+            cur.execute(
+                "UPDATE mandates SET status=?, capture_id=COALESCE(?, capture_id) WHERE trace_id=?",
+                (status, capture_id, row["trace_id"]),
+            )
+        else:
+            cur.execute(
+                "UPDATE mandates SET status=?, capture_id=COALESCE(?, capture_id) WHERE order_id=?",
+                (status, capture_id, order_id),
+            )
         return cur._cur.rowcount
 
 
 def find_mandate_by_order(order_id: str) -> dict | None:
     with _Conn() as db:
-        return db.cur().execute("SELECT * FROM mandates WHERE order_id=?", (order_id,)).fetchone()
+        rows = db.cur().execute("SELECT * FROM mandates WHERE order_id=?", (order_id,)).fetchall()
+    return _aggregate(rows)[0] if rows else None
+
+
+def _aggregate(rows: list[dict]) -> list[dict]:
+    """把三层记录聚合回「一笔交易一行」的视图。
+
+    DB 里一笔交易是三条记录（intent/cart/payment），但前端 /audit 与旧查询
+    期望一行含三层内容 —— 这里做归并，使**前端零改动**。
+    每条记录本身冗余存了三层快照，所以取 payment 层作代表行即可还原完整形状。
+    """
+    groups: dict[str, list[dict]] = {}
+    order: list[str] = []
+    for r in rows:
+        tid = r.get("trace_id") or ""
+        key = tid if tid else f"legacy:{r['id']}"  # 旧数据无 trace_id，各自独立成组
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(r)
+
+    out: list[dict] = []
+    for key in order:
+        grp = groups[key]
+        rep = next((r for r in grp if r.get("layer") == "payment"), grp[0])
+        out.append(
+            {
+                "mandate_uuid": rep["mandate_uuid"],
+                "trace_id": rep.get("trace_id") or "",
+                "intent": rep["intent"],
+                "cart": rep["cart"],
+                "payment": rep["payment"],
+                "status": rep["status"],
+                "decision": rep["decision"],
+                "order_id": rep["order_id"],
+                "capture_id": rep["capture_id"],
+                "created_at": rep["created_at"],
+                # 分层明细，供审计详情展示（前端可按需消费）
+                "layers": {
+                    r.get("layer", "intent"): {
+                        "mandate_uuid": r["mandate_uuid"],
+                        "content": r.get("content", ""),
+                        "status": r["status"],
+                        "created_at": r["created_at"],
+                    }
+                    for r in grp
+                },
+            }
+        )
+    return out
 
 
 def list_mandates(limit: int = 100) -> list[dict]:
+    """审计列表：一笔交易一行（三层聚合后）。"""
     with _Conn() as db:
-        return db.cur().execute("SELECT * FROM mandates ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        rows = db.cur().execute(
+            "SELECT * FROM mandates ORDER BY id DESC LIMIT ?", (limit * 3,)
+        ).fetchall()
+    return _aggregate(rows)[:limit]
+
+
+def list_mandate_layers(trace_id: str) -> list[dict]:
+    """按 trace_id 取出一笔交易的三层原始记录（审计详情用）。"""
+    with _Conn() as db:
+        return db.cur().execute(
+            "SELECT * FROM mandates WHERE trace_id=? ORDER BY id", (trace_id,)
+        ).fetchall()
 
 
 # ── Webhook 事件（D6 审计用）─────────────────────────────

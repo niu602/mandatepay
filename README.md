@@ -16,7 +16,7 @@
 | Agent | LangGraph（五节点状态机） | ✅ 已跑通 |
 | 后端 | FastAPI + Python | ✅ 已跑通 |
 | 支付 | PayPal Orders v2 REST（Web 流）+ Agent Toolkit（Agent 流） | ✅ **两条均已跑通** |
-| 模型 | DeepSeek-V3（意图解析，function calling） | ✅ 已接入（无 Key 时自动降级规则解析） |
+| 模型 | DeepSeek-V3（意图解析，function calling） | ⏳ 代码已完成，**尚未配置 Key 实测**，当前走规则降级 |
 | 数据库 | **PostgreSQL 16**（`DATABASE_URL` 驱动，留空即回退 SQLite） | ✅ 已切换并回归 |
 | 前端 | `static/` 原生 HTML（支付页 + 审计页） | ✅ 已可用 |
 | MCP | @paypal/mcp | ⏳ P1 可选，冲奖用 |
@@ -290,14 +290,14 @@ REST 路径已验证，绝不替换；两条并存向评委展示"PayPal 集成�
 
 - [x] 沙箱支付闭环跑通（REST）
 - [x] LangGraph 五节点状态机
-- [x] 约束引擎（预算/白名单/阈值）
-- [x] 三层 Mandate 审计日志 + 持久化
+- [x] 约束引擎（预算/白名单/阈值）+ **单元测试 16 例**（`python -m pytest tests/`）
+- [x] 三层 Mandate：一笔交易落 **3 条独立记录**（Intent/Cart/Payment，`trace_id` 串联）
 - [x] Agent 流接真实 PayPal Agent Toolkit
-- [x] DeepSeek function calling（含无 Key 降级）
+- [ ] DeepSeek function calling（代码完成，**等 Key 实测**；当前规则降级）
 - [x] 前端审计页 + 人工确认入口
 - [x] SQLite → PostgreSQL 切换（含迁移脚本，D1-D5 回归通过）
 - [x] Webhook 签名校验 + 公网隧道（4 事件订阅完成）
-- [x] git init + .gitignore + MIT LICENSE（**年份/作者为占位符，提交前替换**）
+- [x] git init + .gitignore + MIT LICENSE（署名 2026 牛子森）
 - [ ] MCP Server 集成（P1 冲奖）
 - [ ] Demo 视频 ≤3 分钟（**录屏剪辑，不要现场直播**）
 - [ ] 11/11 提前提交 Devpost

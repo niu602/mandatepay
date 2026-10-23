@@ -302,7 +302,13 @@ def submit_purchase(body: PurchaseIn):
     """
     from agent import store
     from agent.constraints import evaluate
-    from agent.models import MandateRecord, MandateStatus, PurchaseRequest, _now_iso
+    from agent.models import (
+        MandateRecord,
+        MandateStatus,
+        PurchaseRequest,
+        build_mandate_trio,
+        _now_iso,
+    )
     from agent.paypal_tools import create_order as paypal_create_order
 
     req = PurchaseRequest(
@@ -323,7 +329,8 @@ def submit_purchase(body: PurchaseIn):
         "REQUIRE_HUMAN": MandateStatus.PENDING_HUMAN,
         "REJECT": MandateStatus.REJECTED,
     }
-    mandate = MandateRecord(
+    # 一笔交易落三条：Intent / Cart / Payment 各一条，共享 trace_id
+    trio = build_mandate_trio(
         intent=f"采购 {req.item}（供应商 {req.vendor}）",
         cart=f"{req.item} × ${req.amount_usd:.2f} ({req.currency})",
         payment=(
@@ -337,7 +344,8 @@ def submit_purchase(body: PurchaseIn):
         status=status_map[result.decision.value],
         decision=result.decision,
     )
-    store.save_mandate(mandate)
+    store.save_mandates(trio)
+    mandate = trio[-1]  # 以 Payment 层作代表行
 
     payment_result = {"status": "SKIPPED", "reason": result.reason}
     if result.decision.value != "REJECT":
