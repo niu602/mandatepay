@@ -192,18 +192,29 @@ curl http://127.0.0.1:8888/api/health      # webhook_id_configured 应为 true
 curl -H "ngrok-skip-browser-warning: true" https://<你的隧道域名>/api/health
 # 期望：{"status":"ok",...,"db_backend":"postgresql"}
 
-# 6) 可选：本地跳过验签跑通事件处理逻辑（仅开发用，PAYPAL_MODE=live 时强制失效）
+# 6) 终极验证：让 PayPal 真实投递一个事件（带真签名，走完整链路）
+python scripts/verify_webhook.py --info
+python scripts/verify_webhook.py --simulate PAYMENT.CAPTURE.COMPLETED
+# 期望：本地 webhook_events 表出现该 event_id，且 verified=1
+# 若只想改 URL 而不重建（webhook id 保持不变）：
+#   python scripts/verify_webhook.py --set-url https://<新域名>/api/webhook
+
+# 7) 可选：本地跳过验签跑通事件处理逻辑（仅开发用，PAYPAL_MODE=live 时强制失效）
 PAYPAL_WEBHOOK_SKIP_VERIFY=true python -m uvicorn app.main:app --host 127.0.0.1 --port 8888
 ```
 
 > ⚠️ **隧道 URL 每次启动会变**（免费版随机子域名）。重启隧道后必须重注册：
 > `python scripts/setup_webhook.py --create --url <新URL> --force`
 >
-> 想一劳永逸可去 ngrok Dashboard 申请一个免费静态域名，然后用
-> `ngrok http --domain=<你的静态域名>.ngrok-free.dev 127.0.0.1:8888`，URL 就不再变化。
+> **本项目已用固定域名**：隧道以 `--domain=dealer-rover-praying.ngrok-free.dev` 启动，
+> URL 不再变化，因此 **webhook 只需注册一次，重启隧道后无需重注册**。
+> 换机器或换域名时才需要 `python scripts/verify_webhook.py --set-url <新URL>`（PATCH，保留 webhook id）。
 >
 > **首次配置 ngrok**：`ngrok config add-authtoken <token>`（token 放 `.env` 的 `NGROK_AUTHTOKEN`）。
 > 注意 winget 装的 ngrok 是 3.3.1，太旧会被拒（`ERR_NGROK_121`，要求 ≥3.20.0），先跑一次 `ngrok update`。
+>
+> **simulate-event 的坑**：正确路径是 `POST /v1/notifications/simulate-event`，`webhook_id` 放在 body 里。
+> 写成 `/v1/notifications/webhooks/{id}/simulate-event` 会返回 404（空 body）。
 
 ## 两条支付路径（重要，不要互相替代）
 
