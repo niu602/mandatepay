@@ -3,6 +3,8 @@
 最小实现：获取访问令牌 → 创建订单 → 捕获订单。
 参考官方文档：https://developer.paypal.com/api/rest/
 """
+import uuid
+
 import requests
 
 from . import config
@@ -62,6 +64,55 @@ def capture_order(order_id: str) -> dict:
         },
         json={},
         timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def create_order_with_test_card(amount: float, currency: str = "USD") -> dict:
+    """用沙箱测试卡在 API 层直接完成付款（**仅供回归测试**）。
+
+    与普通 create_order 的区别：请求体带 `payment_source.card`，PayPal 会用测试卡直接扣款，
+    订单创建返回的 status 即为 **COMPLETED**，不需要人去 approval_url 点确认，也不需要再 capture。
+
+    这就是混合闭环方法论里 "simulate approve" 的 API 化实现：
+    让 `create → simulate approve → capture → assert COMPLETED` 这条链路可以一条命令自动跑完。
+
+    注意：
+    - 必须带 `PayPal-Request-Id` 幂等头，否则返回 PAYPAL_REQUEST_ID_REQUIRED（400）；
+    - 仅用于测试脚本。产品主流程仍然是「Agent 下单 + 人确认」，不做浏览器自动化。
+    """
+    token = get_access_token()
+    payload = {
+        "intent": "CAPTURE",
+        "purchase_units": [
+            {"amount": {"currency_code": currency, "value": f"{amount:.2f}"}}
+        ],
+        "payment_source": {
+            "card": {
+                "number": "4333134069790191",  # 沙箱 VISA 测试卡
+                "expiry": "2031-11",
+                "security_code": "123",
+                "name": "Test Buyer",
+                "billing_address": {
+                    "address_line_1": "123 Main St",
+                    "admin_area_2": "San Jose",
+                    "admin_area_1": "CA",
+                    "postal_code": "95131",
+                    "country_code": "US",
+                },
+            }
+        },
+    }
+    resp = requests.post(
+        f"{config.PAYPAL_API_BASE}/v2/checkout/orders",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+            "PayPal-Request-Id": str(uuid.uuid4()),
+        },
+        json=payload,
+        timeout=30,
     )
     resp.raise_for_status()
     return resp.json()

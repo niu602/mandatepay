@@ -86,25 +86,70 @@ Agent 创建订单后状态为 `PAYER_ACTION_REQUIRED`，必须人去 `approval_
 理由：
 1. MandatePay 的命题就是"AI 不能偷偷花钱" —— 全自动扣款与核心叙事直接冲突；
 2. PayPal 的 agentic commerce 范式本身就是"人预先授权范围 + Agent 在范围内行动"；
-3. 沙箱弹窗开合不稳定，浏览器自动化是无底洞，且让 Demo 录制随时翻车；
-4. 评委看的是 agentic commerce 的**交互安全**，不是自动化程度。
+3. 评委看的是 agentic commerce 的**交互安全**，不是自动化程度。
 
-正确做法：Demo 真实走一遍，旁白强调"人确认"是安全设计；前端提供"去确认付款"+"我已付款·捕获"按钮
-（**人授权 + 机器执行**），这才是 agentic commerce 的正确模式。
+正确做法：**Demo 走真实流程录屏，旁白强调"人确认"是安全设计 —— 这正是 MandatePay 的命题所在。**
+前端提供"去确认付款"+"我已付款·捕获"按钮（**人授权 + 机器执行**），这才是 agentic commerce 的正确模式。
+
+### 为什么不做浏览器自动化（三个不稳定因素，准确口径）
+
+1. **死路归因（不是"卡路径"）**：是 **guest + 非测试邮箱**触发了"创建账户"流程。
+   10-22 实测用 `niu602@outlook.com`（非测试邮箱）走 guest 付款，PayPal 把该邮箱当"新买家"，
+   要求依次填 密码 → 出生日期 → 身份证件 → 邮编 → 地址验证 → 短信验证码；
+   沙箱不真发短信、开发者后台收件箱也收不到，所以是死路。
+   **正确做法：用测试买家账号 `sb-mtet153479750@personal.example.com` 直接余额付款，不会触发创建账户流程。**
+
+2. **沙箱 genericError（"系统暂时无响应"）**：偶发、可重试；或先在浏览器单独登录沙箱买家账号
+   （sandbox.paypal.com），再发起付款弹窗，即可直接进入付款确认页。**不是死路，不要写"必死"。**
+
+3. **弹窗自动化（不是"抓不到"）**：CDP `Target.getTargets` **可以枚举到**弹窗的 page 目标
+   （说"抓不到"不准确），但接管成本高；且弹窗**开合本身不稳定** —— 10-22 实测点击后未开独立窗口，
+   回退为页内"没有找到安全的 PayPal 浏览器？帮助重启窗口完成付款"恢复弹层。
+   **不要依赖自动化接管弹窗。**
+
+> **关于"沙箱收件箱为空"的严谨性**：10-22 只查了沙箱账号"邮件通知"这一个 dashboard 入口，
+> 没有穷举所有代码级取件渠道。这是**主动放弃**，不是**不可能证明**。
+> 因此本项目不写"沙箱无法读取邮件"，而是选择测试买家账号余额付款路径，不依赖邮件回调。
 
 ## 混合闭环校验脚本
 
-不要追求"全自动"或"纯人工"二选一 —— 机器驱动可控部分，人只点最后一步。
+不要写成"全自动"或"纯人工"的二选一。正确写法是**混合闭环**：
+
+> 自动化驱动可控部分（打开页面 / 点击按钮 / 登录测试买家）
+> + 人点击最终"完成购买"
+> + 后端调用 `capture-order`
+> + 用 PayPal API 断言 `COMPLETED`
+
+这条链路已沉淀为可复用的 API 测试脚本 `create → simulate approve → capture → assert COMPLETED`，
+而不是靠浏览器自动化硬跑。
 
 ```bash
 # 1. 创建订单，拿到 approval_url
 python -m agent.e2e_check --create --amount 10 --item "Notion Pro"
 
-# 2. 人在浏览器打开 approval_url，用沙箱测试买家账号完成付款
+# 2. 用测试买家账号 sb-mtet153479750@personal.example.com 在 approval_url 完成付款
+#    （不要用 guest + 非测试邮箱，会触发创建账户 → 短信验证码死路）
 
 # 3. 捕获并断言 COMPLETED
 python -m agent.e2e_check --capture <ORDER_ID>
 ```
+
+**另有 `--auto` 全自动模式（仅回归测试用，不是产品流程）**：
+
+用沙箱测试卡在 **API 层**完成付款 —— PayPal 创建订单时即以测试卡扣款，返回 status 就是 `COMPLETED`，
+不需要人去 approval_url，也不需要再 capture。这正是方法论里 "simulate approve" 的 API 化实现，
+让 `create → simulate approve → capture → assert COMPLETED` 能一条命令跑完：
+
+```bash
+python -m agent.e2e_check --auto --amount 7.5
+# ✅ 闭环成功 —— order=97108519MW170051J capture=2R045877YM6842912
+
+# 实现要点：请求体带 payment_source.card（沙箱 VISA 测试卡 4333134069790191），
+# 且必须带 PayPal-Request-Id 幂等头，否则返回 PAYPAL_REQUEST_ID_REQUIRED (400)。
+```
+
+> ⚠️ 区分清楚：`--auto` **只用于回归测试**，证明支付链路是通的；
+> 产品主流程与 Demo 仍然走「Agent 下单 + 人确认」，不做浏览器自动化。
 
 ## 快速开始
 
@@ -232,10 +277,14 @@ REST 路径已验证，绝不替换；两条并存向评委展示"PayPal 集成�
 ## 沙箱测试
 
 - 买家（Personal）：developer.paypal.com → Testing Tools → Sandbox Accounts
+  - 本项目使用的测试买家：**`sb-mtet153479750@personal.example.com`**
 - 沙箱测试卡：VISA `4333134069790191`，有效期 `11/31`，CSC 任意 3 位
-- ⚠️ **必须走测试买家账号登录付款**。用非测试邮箱走 guest 付款会被 PayPal 当"新买家"要求创建账户
-  （密码/出生日期/身份证件/邮编）→ 地址验证 → 短信验证码，沙箱不真发短信，是死路。
-  用测试买家账号直接余额付款，不触发创建账户流程。
+- ⚠️ **必须走测试买家账号登录、余额付款**，不要走 guest 付款。
+  死路归因：**guest + 非测试邮箱**会被 PayPal 判定为"新买家"并进入创建账户流程
+  （密码 → 出生日期 → 身份证件 → 邮编 → 地址验证 → 短信验证码），沙箱不真发短信
+  且开发者后台收件箱收不到 → 死路。测试买家账号余额付款不触发该流程。
+- ℹ️ 登录偶发"系统暂时无响应"（genericError）：重试即可；或先在浏览器单独登录沙箱买家账号
+  再发起付款弹窗。**可解，不是死路。**
 
 ## 待办
 
