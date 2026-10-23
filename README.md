@@ -13,10 +13,10 @@
 
 | 层 | 选型 | 状态 |
 |---|---|---|
-| Agent | LangGraph（五节点状态机） | ✅ 已跑通 |
+| Agent | LangGraph（七节点状态机，含 2 个 AI 决策节点） | ✅ 已跑通 |
 | 后端 | FastAPI + Python | ✅ 已跑通 |
 | 支付 | PayPal Orders v2 REST（Web 流）+ Agent Toolkit（Agent 流） | ✅ **两条均已跑通** |
-| 模型 | glm-5.3-flash（腾讯 MaaS，OpenAI 兼容） | ✅ **已实测**：function calling 6/6 正确 + 6/6 稳定 |
+| 模型 | glm-5.3-flash（腾讯 MaaS，OpenAI 兼容） | ✅ **已实测**：function calling 6/6 + 决策解释/消费洞察实时产出 |
 | 数据库 | **PostgreSQL 16**（`DATABASE_URL` 驱动，留空即回退 SQLite） | ✅ 已切换并回归 |
 | 前端 | `static/` 原生 HTML（支付页 + 审计页） | ✅ 已可用 |
 | MCP | @paypal/mcp | ⏳ P1 可选，冲奖用 |
@@ -39,7 +39,7 @@ paypal-ai-hackathon/
 │   ├── intent.py          # 意图解析入口（LLM 优先，规则兜底）
 │   ├── llm_intent.py      # LLM function calling 解析器（OpenAI 协议兼容，可换模型）
 │   ├── paypal_tools.py    # PayPal Agent Toolkit 薄封装 — Agent 流
-│   ├── graph.py           # 五节点状态机 parse→validate→approve→pay→verify
+│   ├── graph.py           # 七节点状态机 parse→validate→insight→explain→approve→pay→verify
 │   ├── store.py           # 持久化（双后端：PostgreSQL / SQLite）
 │   ├── e2e_check.py       # 支付闭环校验脚本
 │   └── demo.py            # 四场景端到端演示
@@ -167,6 +167,7 @@ python -m uvicorn app.main:app --port 8888
 ```
 
 - `http://127.0.0.1:8888/` —— PayPal 支付测试页（Web 流）
+- `http://127.0.0.1:8888/constraints` —— 约束设定页（自然语言设约束 + 结构化规则 + 消费洞察/决策解释演示）
 - `http://127.0.0.1:8888/audit` —— 三层 Mandate 审计页 + 人工确认入口
 
 ## API
@@ -174,17 +175,31 @@ python -m uvicorn app.main:app --port 8888
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/` | 支付页（Web 流） |
+| GET | `/constraints` | 约束设定页 |
 | GET | `/audit` | 审计页 |
 | POST | `/api/create-order` | 创建订单（Web 流） |
 | POST | `/api/capture-order/{id}` | 捕获订单（Web 流） |
 | POST | `/api/webhook` | PayPal 回调（**已做官方签名校验**） |
 | POST | `/api/agent/constraints` | 设定约束 |
+| POST | `/api/agent/parse` | 自然语言 → 七节点全流程（返回 `insight` 消费洞察 + `explanation` 决策解释） |
 | POST | `/api/agent/requests` | 提交采购（校验→Mandate→真实下单） |
 | POST | `/api/mandates/confirm` | 人付款后捕获并置 COMPLETED |
 | GET | `/api/mandates` | 三层 Mandate 审计日志 |
 | GET | `/api/constraints/current` | 当前生效约束 |
+| GET | `/api/catalog` | 供应商目录 / SaaS 订阅计划 |
 | GET | `/api/webhook/events` | Webhook 事件审计日志 |
 | GET | `/api/health` | 健康检查（含 `db_backend`、webhook 配置状态） |
+
+## AI 决策参与点（本周新增）
+
+状态机从五节点扩到**七节点**，新增两个由 LLM 驱动的节点，让 AI 不只在入口"听一句话"，而是参与每一次决策：
+
+| 节点 | 作用 | 产出示例 |
+|---|---|---|
+| `insight_node` | 每笔采购前结合本月已花费/预算，生成消费洞察 | 「本月已花 $170/$200，这笔 $10 会通过，但只剩 $20 余额」 |
+| `explain_node` | 把约束判定翻译成可行动建议（擅长解释"为什么被拒"） | 「超出单笔阈值 $30，建议提高阈值或拆分订单」 |
+
+两者均有**纯模板兜底**（无 Key / 调用失败也返回可读文案），保证 demo 永不断链。
 
 ## Webhook（D6 已完成）
 
@@ -289,12 +304,14 @@ REST 路径已验证，绝不替换；两条并存向评委展示"PayPal 集成�
 ## 待办
 
 - [x] 沙箱支付闭环跑通（REST）
-- [x] LangGraph 五节点状态机
-- [x] 约束引擎（预算/白名单/阈值）+ **单元测试 16 例**（`python -m pytest tests/`）
+- [x] LangGraph 七节点状态机（新增 insight / explain 两个 AI 决策节点）
+- [x] 约束引擎（滚动预算/双白名单/单笔+日累计双阈值）+ **单元测试 24 例**（`python -m pytest tests/`）
+- [x] AI 决策解释（explain_node）+ 消费洞察（insight_node），模板兜底保底
 - [x] 三层 Mandate：一笔交易落 **3 条独立记录**（Intent/Cart/Payment，`trace_id` 串联）
 - [x] Agent 流接真实 PayPal Agent Toolkit
 - [x] LLM function calling 意图解析（glm-5.3-flash 实测 6/6 正确 + 6/6 稳定）
-- [x] 前端审计页 + 人工确认入口
+- [x] 供应商目录 / SaaS 订阅计划（Toolkit products / subscriptionPlans，Agent 侧可查）
+- [x] 前端约束设定页 `/constraints` + 审计页 + 人工确认入口
 - [x] SQLite → PostgreSQL 切换（含迁移脚本，D1-D5 回归通过）
 - [x] Webhook 签名校验 + 公网隧道（4 事件订阅完成）
 - [x] git init + .gitignore + MIT LICENSE（署名 2026 牛子森）

@@ -1,10 +1,13 @@
 """MandatePay — LangGraph 状态机（真实 PayPal Agent Toolkit 版本）。
 
-五节点：parse → validate → approve → pay → verify
+七节点：parse → validate → insight → explain → approve → pay → verify
 - pay_node 对 AUTO_APPROVE 调用 PayPal Toolkit create_order 创建真实订单
   （沙箱买家需去 approval_url 登录付款，之后由 /api/capture-order/{id} 捕获）
 - REQUIRE_HUMAN 同样创建真实订单，但状态保持 PENDING_HUMAN，等待用户人工确认
 - REJECT 不创建订单
+- insight_node / explain_node 是本周新增的两个 **AI 决策参与点**：
+  每笔采购都会先用 LLM 生成「消费洞察」，再生成「决策解释+建议」，
+  让 AI 不只在入口解析一句话，而是参与每一次决策。
 """
 from __future__ import annotations
 
@@ -39,6 +42,11 @@ class AgentState(TypedDict, total=False):
     mandate: MandateRecord | None
     payment_result: dict | None
     error: str | None
+    # 本周新增：AI 洞察/解释 + 供其使用的花费快照
+    spend: dict          # {"monthly_usd": float, "daily_usd": float}
+    reason: str | None   # 引擎判定原因（供 explain 使用）
+    insight: str         # 消费洞察一句话
+    explanation: str     # 决策解释 + 可操作建议
 
 
 # ── 节点 ───────────────────────────────────────────────
@@ -84,7 +92,48 @@ def validate_node(state: AgentState) -> dict:
     )
 
     result = evaluate(req, constraint, spend=spend)
-    return {"decision": result.decision.value, "error": None if result.decision is not Decision.REJECT else result.reason}
+    return {
+        "decision": result.decision.value,
+        "error": None if result.decision is not Decision.REJECT else result.reason,
+        "reason": result.reason,
+        "constraint": constraint,
+        "spend": {"monthly_usd": spend.monthly_usd, "daily_usd": spend.daily_usd},
+    }
+
+
+def insight_node(state: AgentState) -> dict:
+    """节点 3（AI）：消费洞察 —— 每笔采购前先让 LLM 讲清财务处境。"""
+    from .ai_insight import generate_insight
+
+    req = state.get("request")
+    if req is None:
+        return {}
+    spend = state.get("spend") or {}
+    text = generate_insight(
+        req,
+        state.get("constraint"),
+        float(spend.get("monthly_usd", 0.0)),
+        state.get("decision", ""),
+    )
+    return {"insight": text}
+
+
+def explain_node(state: AgentState) -> dict:
+    """节点 4（AI）：决策解释 —— 把判定翻译成可行动建议（尤其擅长"为什么被拒"）。"""
+    from .ai_insight import generate_explanation
+
+    req = state.get("request")
+    if req is None:
+        return {}
+    spend = state.get("spend") or {}
+    text = generate_explanation(
+        req,
+        state.get("constraint"),
+        state.get("decision", ""),
+        state.get("reason"),
+        float(spend.get("monthly_usd", 0.0)),
+    )
+    return {"explanation": text}
 
 
 def approve_node(state: AgentState) -> dict:
@@ -182,6 +231,14 @@ def route_after_parse(state: AgentState) -> str:
 
 
 def route_after_validate(state: AgentState) -> str:
+    return "insight"
+
+
+def route_after_insight(state: AgentState) -> str:
+    return "explain"
+
+
+def route_after_explain(state: AgentState) -> str:
     return "approve"
 
 
@@ -207,13 +264,17 @@ def build_graph():
     builder = StateGraph(AgentState)
     builder.add_node("parse", parse_node)
     builder.add_node("validate", validate_node)
+    builder.add_node("insight", insight_node)
+    builder.add_node("explain", explain_node)
     builder.add_node("approve", approve_node)
     builder.add_node("pay", pay_node)
     builder.add_node("verify", verify_node)
 
     builder.set_entry_point("parse")
     builder.add_conditional_edges("parse", route_after_parse, {"validate": "validate", END: END})
-    builder.add_conditional_edges("validate", route_after_validate, {"approve": "approve"})
+    builder.add_conditional_edges("validate", route_after_validate, {"insight": "insight"})
+    builder.add_conditional_edges("insight", route_after_insight, {"explain": "explain"})
+    builder.add_conditional_edges("explain", route_after_explain, {"approve": "approve"})
     builder.add_conditional_edges("approve", route_after_approve, {"pay": "pay", END: END})
     builder.add_edge("pay", "verify")
     builder.add_edge("verify", END)

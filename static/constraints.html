@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MandatePay · 约束设定</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Microsoft YaHei", system-ui, sans-serif;
+      max-width: 1080px; margin: 32px auto; padding: 0 20px;
+      color: #1a2433; background: #f7f9fc; line-height: 1.6;
+    }
+    h1 { font-size: 24px; color: #003087; margin-bottom: 4px; }
+    .sub { color: #5a6b82; font-size: 14px; margin-bottom: 24px; }
+    .card {
+      background: #fff; border: 1px solid #dbe3ee; border-radius: 10px;
+      padding: 18px 20px; margin-bottom: 20px;
+    }
+    .card h2 { font-size: 16px; margin: 0 0 12px; color: #003087; }
+    .hint { color: #5a6b82; font-size: 13px; margin-bottom: 10px; }
+    textarea, input[type=text] {
+      width: 100%; padding: 10px 12px; border: 1px solid #c6d2e2; border-radius: 8px;
+      font-size: 14px; font-family: inherit; resize: vertical; color: #1a2433;
+    }
+    textarea:focus, input:focus { outline: 2px solid #0070ba33; border-color: #0070ba; }
+    .row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    .btn {
+      padding: 9px 18px; border-radius: 8px; border: none; cursor: pointer;
+      background: #0070ba; color: #fff; font-size: 14px; font-weight: 600;
+    }
+    .btn:hover { background: #005c9d; }
+    .btn:disabled { background: #b8c4d4; cursor: not-allowed; }
+    .btn.ghost { background: #eef2f7; color: #003087; }
+    .btn.ghost:hover { background: #dde5f0; }
+    /* 结构化规则卡 */
+    .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 6px; }
+    .rule {
+      background: #fafbfd; border: 1px solid #e3e9f2; border-radius: 8px; padding: 12px 14px;
+    }
+    .rule .k { color: #5a6b82; font-size: 12px; margin-bottom: 4px; }
+    .rule .v { font-size: 17px; font-weight: 700; color: #003087; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .chip {
+      background: #e8f0fe; color: #1967d2; border-radius: 12px;
+      padding: 3px 10px; font-size: 12px; font-weight: 600;
+    }
+    .chip.empty { background: #f0f2f5; color: #8a94a6; }
+    /* AI 输出高亮 */
+    .ai {
+      border-left: 4px solid #7b61ff; background: #f6f4ff;
+      border-radius: 0 8px 8px 0; padding: 12px 16px; margin: 10px 0; font-size: 14px; color: #2d2350;
+    }
+    .ai .tag {
+      display: inline-block; font-size: 11px; font-weight: 700; color: #5b3fd6;
+      background: #e6e0ff; border-radius: 6px; padding: 2px 8px; margin-bottom: 6px;
+    }
+    .badge { display:inline-block; padding: 3px 12px; border-radius: 12px; font-size:13px; font-weight:700; }
+    .b-auto { background:#e6f4ea; color:#137333; }
+    .b-human { background:#fef7e0; color:#9a6700; }
+    .b-reject { background:#fce8e6; color:#c5221f; }
+    .b-set { background:#e8f0fe; color:#1967d2; }
+    .kv { display:flex; gap:8px; font-size:13px; margin: 6px 0; }
+    .kv .k { color:#5a6b82; min-width:120px; }
+    .kv .v { color:#1a2433; font-weight:500; word-break: break-all; }
+    .note { background:#fff8e1; border-left:3px solid #f9ab00; padding:10px 14px; font-size:13px; color:#6b5300; margin-bottom:20px; }
+    #msg { font-size:13px; margin-top:10px; min-height:18px; }
+    .ok { color:#137333; } .err { color:#c5221f; }
+    .spin { color:#5a6b82; }
+    a.link { color:#0070ba; word-break:break-all; }
+    nav.top { margin-bottom: 18px; font-size: 14px; }
+    nav.top a { color:#0070ba; margin-right: 16px; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <nav class="top"><a href="/audit">· 审计日志</a><a href="/">· 支付测试</a></nav>
+  <h1>MandatePay · 约束设定</h1>
+  <div class="sub">用自然语言告诉 Agent「怎么花钱」，它会解析成结构化规则，并在每次决策时给出洞察与解释</div>
+
+  <div class="note">
+    <b>两处 AI 参与：</b>① 下面输入一句话设定约束，AI 解析成结构化规则；
+    ② 在「消费洞察 / 决策解释」里试一笔采购，AI 会先算预算处境给出<b>洞察</b>，再对判定给出<b>可操作解释</b>。
+  </div>
+
+  <!-- ① 约束设定 -->
+  <div class="card">
+    <h2>① 用自然语言设定约束</h2>
+    <div class="hint">例：「每月 SaaS 预算 200 美元，单笔超过 50 要先问我，只允许买 Notion 和 Figma」</div>
+    <textarea id="cText" rows="2" placeholder="用一句话描述你的花钱约束…">每月 SaaS 预算 200 美元，单笔超过 50 要先问我，只允许买 Notion 和 Figma</textarea>
+    <div class="row"><button class="btn" onclick="setConstraint()">解析并设定约束</button></div>
+    <div id="cMsg" class="msg"></div>
+    <div id="rules" style="display:none">
+      <div class="rules" id="ruleCards"></div>
+    </div>
+  </div>
+
+  <!-- ② 消费洞察 / 决策解释 -->
+  <div class="card">
+    <h2>② 消费洞察 / 决策解释（试一笔采购）</h2>
+    <div class="hint">例：「帮我买 Notion Pro，10 美元」或「买 Slack Pro，15 美元」（会被白名单拦截并给出解释）</div>
+    <input type="text" id="pText" placeholder="描述一笔采购，例：帮我买 Notion Pro，10 美元" value="帮我买 Notion Pro，10 美元">
+    <div class="row"><button class="btn" onclick="tryPurchase()">让 Agent 处理</button></div>
+    <div id="pMsg" class="msg"></div>
+    <div id="pOut" style="display:none">
+      <div style="margin-top:12px"><span id="pBadge"></span></div>
+      <div class="ai" id="insightBox"><span class="tag">💡 消费洞察</span><div id="insightText"></div></div>
+      <div class="ai" id="explainBox"><span class="tag">🧭 决策解释</span><div id="explainText"></div></div>
+      <div id="payDetail"></div>
+    </div>
+  </div>
+
+<script>
+function cls(d){
+  return d==="AUTO_APPROVE"?"b-auto":d==="REQUIRE_HUMAN"?"b-human":d==="REJECT"?"b-reject":"b-set";
+}
+function label(d){
+  return {AUTO_APPROVE:"自动通过",REQUIRE_HUMAN:"需人工确认",REJECT:"已拦截",PARSED_CONSTRAINT:"约束已设定"}[d]||d||"";
+}
+function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+async function setConstraint(){
+  const text = document.getElementById("cText").value.trim();
+  const msg = document.getElementById("cMsg");
+  if(!text){ msg.className="msg err"; msg.textContent="请先输入约束描述"; return; }
+  msg.className="msg spin"; msg.textContent="AI 解析中…（function calling → 结构化规则）";
+  try{
+    const r = await fetch("/api/agent/parse",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({text, session_id:"web-constraint"})});
+    const d = await r.json();
+    if(d.decision!=="PARSED_CONSTRAINT"){
+      msg.className="msg err";
+      msg.textContent="没识别成约束设定（decision="+d.decision+"）。试试用「预算 / 阈值 / 白名单」等词。";
+      return;
+    }
+    const c = d.constraint;
+    msg.className="msg ok"; msg.textContent="✓ 约束已保存，以下是 AI 解析出的结构化规则：";
+    const cards = [
+      ["月度预算", "$"+(c.monthly_budget_usd??0)],
+      ["单笔阈值", "$"+(c.single_tx_threshold_usd??0)],
+      ["日累计阈值", c.daily_threshold_usd?("$"+c.daily_threshold_usd):"不限"],
+    ];
+    let html = cards.map(([k,v])=>`<div class="rule"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join("");
+    html += `<div class="rule"><div class="k">供应商白名单</div><div class="chips">${
+      (c.vendor_whitelist&&c.vendor_whitelist.length)?c.vendor_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty">不限</span>`}</div></div>`;
+    html += `<div class="rule"><div class="k">品类白名单</div><div class="chips">${
+      (c.category_whitelist&&c.category_whitelist.length)?c.category_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty">不限</span>`}</div></div>`;
+    document.getElementById("ruleCards").innerHTML = html;
+    document.getElementById("rules").style.display="block";
+  }catch(e){ msg.className="msg err"; msg.textContent="请求失败："+e; }
+}
+
+async function tryPurchase(){
+  const text = document.getElementById("pText").value.trim();
+  const msg = document.getElementById("pMsg");
+  if(!text){ msg.className="msg err"; msg.textContent="请先描述一笔采购"; return; }
+  msg.className="msg spin"; msg.textContent="Agent 处理中…（校验 → 洞察 → 解释 → 审批）";
+  document.getElementById("pOut").style.display="none";
+  try{
+    const r = await fetch("/api/agent/parse",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({text, session_id:"web-purchase-"+Date.now()})});
+    const d = await r.json();
+    document.getElementById("pBadge").innerHTML = `<span class="badge ${cls(d.decision)}">${label(d.decision)}</span>`;
+    document.getElementById("insightText").textContent = d.insight || "（本次未生成洞察）";
+    document.getElementById("explainText").textContent = d.explanation || "（本次未生成解释）";
+
+    let det = "";
+    const spend = d.spend||{};
+    det += `<div class="kv"><div class="k">引擎原始原因</div><div class="v">${esc(d.reason||d.error||"—")}</div></div>`;
+    det += `<div class="kv"><div class="k">本月已花费</div><div class="v">$${Number(spend.monthly_usd||0).toFixed(2)}</div></div>`;
+    const pr = d.payment_result;
+    if(pr){
+      if(pr.status==="SKIPPED"){
+        det += `<div class="kv"><div class="k">支付</div><div class="v">未创建订单（${esc(pr.reason||"被拦截"||"")}）</div></div>`;
+      }else{
+        det += `<div class="kv"><div class="k">订单</div><div class="v">${esc(pr.order_id)}（${esc(pr.status)}）</div></div>`;
+        if(pr.approval_url) det += `<div class="kv"><div class="k">去付款</div><div class="v"><a class="link" target="_blank" href="${esc(pr.approval_url)}">打开 PayPal 付款页</a></div></div>`;
+      }
+    }
+    const m = d.mandate;
+    if(m){
+      const layers = (m.layers||[]).map(L=>`<span class="chip">${esc(L.layer)}: ${esc(L.status)}</span>`).join("");
+      det += `<div class="kv"><div class="k">三层 Mandate</div><div class="v"><div class="chips">${layers}</div></div></div>`;
+    }
+    document.getElementById("payDetail").innerHTML = det;
+    document.getElementById("pOut").style.display="block";
+    msg.className="msg ok"; msg.textContent="✓ 处理完成（见下方 AI 洞察与解释）";
+  }catch(e){ msg.className="msg err"; msg.textContent="请求失败："+e; }
+}
+</script>
+</body>
+</html>

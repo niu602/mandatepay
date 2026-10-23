@@ -37,6 +37,13 @@ def audit_page():
     return html
 
 
+@app.get("/constraints", response_class=HTMLResponse)
+def constraints_page():
+    """约束设定页：自然语言设约束 + 结构化规则展示 + 消费洞察/决策解释演示。"""
+    html = (STATIC_DIR / "constraints.html").read_text(encoding="utf-8")
+    return html
+
+
 @app.post("/api/create-order")
 async def create_order(request: Request):
     """后端创建 PayPal 订单，返回订单 id 给前端 JS SDK。"""
@@ -382,11 +389,14 @@ class NLIn(BaseModel):
 
 @app.post("/api/agent/parse")
 def agent_parse(body: NLIn):
-    """**自然语言 → 完整 LangGraph 五节点** 的端到端入口。
+    """**自然语言 → 完整 LangGraph 七节点** 的端到端入口。
 
     与 `/api/agent/requests` 的区别：后者收结构化 JSON、绕过状态机；
-    这里收自然语言，真实走 parse → validate → approve → pay → verify，
-    因此 LLM function calling 解析与三层 Mandate 审计都会真正生效。
+    这里收自然语言，真实走 parse → validate → insight → explain → approve → pay → verify，
+    因此 LLM function calling 解析、AI 消费洞察/决策解释、三层 Mandate 审计都会真正生效。
+
+    返回里的 `insight`（消费洞察）与 `explanation`（决策解释+建议）是本周新增的
+    两个 AI 输出点 —— 让 AI 不只"听一句话"，而是参与每一次决策。
 
     注意：命中采购意图且通过校验时，pay 节点会创建**真实沙箱订单**。
     """
@@ -433,6 +443,11 @@ def agent_parse(body: NLIn):
         "request": final.get("request").model_dump() if final.get("request") else None,
         "mandate": out_mandate,
         "payment_result": payment,
+        # 本周新增：AI 决策参与点
+        "insight": final.get("insight"),          # 消费洞察一句话
+        "explanation": final.get("explanation"),  # 决策解释 + 可操作建议
+        "reason": final.get("reason"),            # 引擎原始原因
+        "spend": final.get("spend"),              # 花费快照 {monthly_usd, daily_usd}
     }
 
 
