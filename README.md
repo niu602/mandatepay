@@ -170,29 +170,40 @@ PAYMENT.CAPTURE.PENDING     ← 扣款挂起
 ### 本地联调步骤
 
 ```bash
-# 1) 起服务（应用监听 8888）
-python -m uvicorn app.main:app --port 8888
+# 1) 起服务（显式绑 IPv4，端口 8888）
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8888
 
-# 2) 起公网隧道（端口必须与服务监听端口一致 = 8888）
-tmole 8888                      # 或 ngrok http 8888
-# 输出形如 https://xxxx.tunnelmole.net
+# 2) 起 ngrok 隧道 —— 两个坑，缺一不可：
+#    坑A：开着 VPN 时 http_proxy/https_proxy 存在，ngrok 会走代理 → ERR_NGROK_9009（代理是付费功能）
+#    坑B：只写 `ngrok http 8888` 会解析成 [::1]:8888（IPv6），而服务只听 IPv4 → ERR_NGROK_8012
+env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+    ngrok http 127.0.0.1:8888
+# 隧道地址从 ngrok 控制台取：http://127.0.0.1:4040/api/tunnels
+# 形如 https://dealer-rover-praying.ngrok-free.dev
 
 # 3) 注册 Webhook 并订阅 4 个事件（无需手点 Dashboard）
-python scripts/setup_webhook.py --create --url https://xxxx.tunnelmole.net/api/webhook
+python scripts/setup_webhook.py --create --url https://<你的隧道域名>/api/webhook --force
 # 脚本会把返回的 webhook id 自动写进 .env 的 PAYPAL_WEBHOOK_ID
 
 # 4) 重启服务后确认
 curl http://127.0.0.1:8888/api/health      # webhook_id_configured 应为 true
 
-# 5) 验证隧道真的转发到服务
-curl https://xxxx.tunnelmole.net/api/health
+# 5) 验证隧道真的转发到服务（必须返回我们的 JSON，而不是 ngrok 的 HTML 错误页）
+curl -H "ngrok-skip-browser-warning: true" https://<你的隧道域名>/api/health
+# 期望：{"status":"ok",...,"db_backend":"postgresql"}
 
 # 6) 可选：本地跳过验签跑通事件处理逻辑（仅开发用，PAYPAL_MODE=live 时强制失效）
-PAYPAL_WEBHOOK_SKIP_VERIFY=true python -m uvicorn app.main:app --port 8888
+PAYPAL_WEBHOOK_SKIP_VERIFY=true python -m uvicorn app.main:app --host 127.0.0.1 --port 8888
 ```
 
 > ⚠️ **隧道 URL 每次启动会变**（免费版随机子域名）。重启隧道后必须重注册：
 > `python scripts/setup_webhook.py --create --url <新URL> --force`
+>
+> 想一劳永逸可去 ngrok Dashboard 申请一个免费静态域名，然后用
+> `ngrok http --domain=<你的静态域名>.ngrok-free.dev 127.0.0.1:8888`，URL 就不再变化。
+>
+> **首次配置 ngrok**：`ngrok config add-authtoken <token>`（token 放 `.env` 的 `NGROK_AUTHTOKEN`）。
+> 注意 winget 装的 ngrok 是 3.3.1，太旧会被拒（`ERR_NGROK_121`，要求 ≥3.20.0），先跑一次 `ngrok update`。
 
 ## 两条支付路径（重要，不要互相替代）
 
