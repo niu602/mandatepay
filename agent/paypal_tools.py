@@ -170,8 +170,19 @@ def create_subscription_plan(
 
 
 def list_subscription_plans(product_id: str | None = None) -> list[dict]:
-    """列出订阅计划；传 product_id 则只列该供应商的计划。"""
+    """列出订阅计划；传 product_id 则只列该供应商的计划。
+
+    注意：PayPal 的 list 返回**精简视图**，不含 billing_cycles/定价。
+    要拿价格必须再调 show_subscription_plan(plan_id) 取完整详情。
+    """
     tool = _get_tool("list_subscription_plans")
     raw = tool.invoke({"product_id": product_id} if product_id else {})
     data = json.loads(raw) if isinstance(raw, str) else raw
     return data.get("plans", []) or []
+
+
+def show_subscription_plan(plan_id: str) -> dict:
+    """取订阅计划完整详情 —— 含 billing_cycles[].pricing_scheme 定价与计费周期。"""
+    tool = _get_tool("show_subscription_plan_details")
+    raw = tool.invoke({"plan_id": plan_id})
+    return json.loads(raw) if isinstance(raw, str) else raw

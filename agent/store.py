@@ -434,6 +434,10 @@ def sync_catalog_from_paypal() -> dict:
     """从 PayPal 拉取供应商与订阅计划，upsert 进本地目录（Agent 侧查询的数据源）。
 
     返回 {vendors: int, plans: int} 同步条数。
+
+    注意：PayPal 的 list 接口返回**精简视图**，没有 billing_cycles/定价，
+    必须对每个计划再调 show_subscription_plan(plan_id) 取完整详情才能拿到价格，
+    否则本地 amount_usd 会同步成 0。
     """
     from agent import paypal_tools
 
@@ -449,20 +453,24 @@ def sync_catalog_from_paypal() -> dict:
             plid = pl.get("id")
             if not plid:
                 continue
-            # 取计划首个定价周期的金额
-            amount = 0.0
-            currency = "USD"
-            cycles = (pl.get("billing_cycles") or [])[:1]
+            # list 是精简视图，需取完整详情拿定价
+            detail = paypal_tools.show_subscription_plan(plid)
+            amount, currency, unit, count = 0.0, "USD", "MONTH", 1
+            cycles = detail.get("billing_cycles") or []
             if cycles:
-                price = cycles[0].get("pricing_scheme", {}).get("fixed_price", {})
+                c0 = cycles[0]
+                price = (c0.get("pricing_scheme") or {}).get("fixed_price") or {}
                 try:
-                    amount = float(price.get("value", 0))
+                    amount = float(price.get("value", 0) or 0)
                 except (TypeError, ValueError):
                     amount = 0.0
                 currency = price.get("currency_code") or "USD"
+                freq = c0.get("frequency") or {}
+                unit = freq.get("interval_unit") or "MONTH"
+                count = int(freq.get("interval_count", 1) or 1)
             save_subscription_plan(
-                plid, pid, pl.get("name", ""), amount, currency,
-                description=pl.get("description") or "",
+                plid, pid, detail.get("name") or pl.get("name", ""), amount, currency,
+                unit, count, description=detail.get("description") or "",
             )
             n_plans += 1
     return {"vendors": n_vendors, "plans": n_plans}

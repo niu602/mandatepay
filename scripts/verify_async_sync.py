@@ -12,9 +12,16 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 
 # 让脚本能 import 项目内模块（agent / app）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Windows 控制台默认可能是 GBK，中文输出会乱码；强制 UTF-8 输出
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
 os.environ["PAYPAL_WEBHOOK_SKIP_VERIFY"] = "true"  # 仅本进程生效，不动 .env
 
@@ -65,11 +72,14 @@ def main() -> int:
     print(f"   初始 Mandate 状态 = {body['mandate']['status']}（应为 APPROVED/PAYER_ACTION_REQUIRED 阶段）")
 
     # 3) 模拟 PayPal 回调 PAYMENT.CAPTURE.COMPLETED，携带我们的 order_id
+    #    event_id 必须每次唯一：webhook_events.event_id 是 UNIQUE，重复会被幂等短路
+    #    （返回 duplicate=True 而不再处理），导致脚本无法重复运行。
+    nonce = uuid.uuid4().hex[:12]
     event = {
-        "id": "WH-ASYNC-VERIFY-001",
+        "id": f"WH-ASYNC-VERIFY-{nonce}",
         "event_type": "PAYMENT.CAPTURE.COMPLETED",
         "resource": {
-            "id": "CAP-ASYNC-VERIFY-001",
+            "id": f"CAP-ASYNC-VERIFY-{nonce}",
             "supplementary_data": {"related_ids": {"order_id": order_id}},
         },
     }

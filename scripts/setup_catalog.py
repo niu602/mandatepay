@@ -12,6 +12,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Windows 控制台默认可能是 GBK，中文输出会乱码；强制 UTF-8 输出
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except Exception:
+    pass
+
 from agent import paypal_tools, store
 
 # 示例目录：供应商 → 订阅计划
