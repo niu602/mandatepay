@@ -26,6 +26,20 @@ class SpendContext:
     daily_usd: float = 0.0
 
 
+def _norm(s: str) -> str:
+    """归一化名称：去首尾空格 + 转小写。
+
+    用户手写「notion」、从别处粘贴「 Notion 」都应命中白名单里的「Notion」，
+    否则用户会看到莫名其妙的误拒（压测实测类 A）。
+    """
+    return (s or "").strip().lower()
+
+
+def _in_list(value: str, whitelist: list[str]) -> bool:
+    """名称是否命中白名单（大小写/空格不敏感）。"""
+    return _norm(value) in {_norm(w) for w in whitelist}
+
+
 class EvaluationResult:
     """校验结果：decision + 人类可读原因。"""
 
@@ -46,31 +60,35 @@ def evaluate(
 
     返回三态结论：
     - AUTO_APPROVE   全通过，Agent 可自动执行
-    - REQUIRE_HUMAN  超过单笔/日累计阈值，需人工确认
+    - REQUIRE_HUMAN  超过单笔/日累计阈值，或品类无法校验，需人工确认
     - REJECT         违反白名单或滚动预算，直接拒绝
 
     预算/阈值判断基于「已花费 + 本次请求」的合计：
     - 月度滚动预算（硬上限）：monthly_usd + amount > budget → REJECT
     - 日累计阈值（软上限）：daily_usd + amount > daily_threshold → REQUIRE_HUMAN
     - 单笔阈值（软上限）：amount > single_tx_threshold → REQUIRE_HUMAN
+
+    金额一律按「分」取整后再比较：0.1+0.2 这类浮点尾数不应把恰好等于阈值的
+    金额误判成超限（压测实测类 H）。
     """
     if constraint is None:
         return EvaluationResult(Decision.REJECT, "未设定约束，拒绝执行")
 
     spend = spend or SpendContext()
+    amount = round(request.amount_usd, 2)  # 按分取整，消除浮点尾数
 
-    # 1. 供应商白名单（硬上限）
-    if constraint.vendor_whitelist and request.vendor not in constraint.vendor_whitelist:
+    # 1. 供应商白名单（硬上限，大小写/空格不敏感）
+    if constraint.vendor_whitelist and not _in_list(request.vendor, constraint.vendor_whitelist):
         return EvaluationResult(
             Decision.REJECT,
             f"供应商「{request.vendor}」不在白名单 {constraint.vendor_whitelist}",
         )
 
-    # 2. 品类白名单（硬上限）
+    # 2. 品类白名单（硬上限）；请求没带品类时留到软上限处理（不静默放行）
     if (
         request.category
         and constraint.category_whitelist
-        and request.category not in constraint.category_whitelist
+        and not _in_list(request.category, constraint.category_whitelist)
     ):
         return EvaluationResult(
             Decision.REJECT,
@@ -78,26 +96,35 @@ def evaluate(
         )
 
     # 3. 月度滚动预算（硬上限）：本月已花 + 本次 > 预算 → 拒
-    if spend.monthly_usd + request.amount_usd > constraint.monthly_budget_usd:
+    if spend.monthly_usd + amount > constraint.monthly_budget_usd:
         return EvaluationResult(
             Decision.REJECT,
-            f"本月已花 ${spend.monthly_usd:.2f} + 本次 ${request.amount_usd:.2f} "
+            f"本月已花 ${spend.monthly_usd:.2f} + 本次 ${amount:.2f} "
             f"超出月度预算 ${constraint.monthly_budget_usd:.2f}",
         )
 
     # 4. 单笔阈值（软上限）→ 需人工确认
-    if request.amount_usd > constraint.single_tx_threshold_usd:
+    if amount > constraint.single_tx_threshold_usd:
         return EvaluationResult(
             Decision.REQUIRE_HUMAN,
-            f"${request.amount_usd:.2f} 超过单笔阈值 ${constraint.single_tx_threshold_usd:.2f}，需人工确认",
+            f"${amount:.2f} 超过单笔阈值 ${constraint.single_tx_threshold_usd:.2f}，需人工确认",
         )
 
     # 5. 日累计阈值（软上限）→ 需人工确认
-    if constraint.daily_threshold_usd > 0 and spend.daily_usd + request.amount_usd > constraint.daily_threshold_usd:
+    if constraint.daily_threshold_usd > 0 and spend.daily_usd + amount > constraint.daily_threshold_usd:
         return EvaluationResult(
             Decision.REQUIRE_HUMAN,
-            f"今日已花 ${spend.daily_usd:.2f} + 本次 ${request.amount_usd:.2f} "
+            f"今日已花 ${spend.daily_usd:.2f} + 本次 ${amount:.2f} "
             f"超过日累计阈值 ${constraint.daily_threshold_usd:.2f}，需人工确认",
+        )
+
+    # 6. 品类未知 + 约束限定了品类 → 无法校验品类白名单。
+    #    既不能静默放行（那等于没约束），也不宜直接拒绝（品类字段常常天然缺失，
+    #    硬拒会误伤正常采购），折中为「需人工确认」。
+    if constraint.category_whitelist and not request.category:
+        return EvaluationResult(
+            Decision.REQUIRE_HUMAN,
+            f"请求未指明品类，无法校验品类白名单 {constraint.category_whitelist}，需人工确认",
         )
 
     return EvaluationResult(Decision.AUTO_APPROVE, "符合全部约束，可自动执行")

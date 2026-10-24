@@ -98,9 +98,21 @@ def test_empty_whitelist_means_no_restriction():
     assert r.decision == Decision.AUTO_APPROVE
 
 
-def test_missing_category_skips_category_check(constraint):
-    """请求未带品类 → 跳过品类校验（不误杀）。"""
+def test_missing_category_requires_human_when_whitelist_set(constraint):
+    """请求未带品类 + 约束限定了品类 → 需人工确认。
+
+    不能静默放行（那等于品类白名单没生效），也不宜直接拒绝
+    （品类字段天然常缺失，硬拒会误伤正常采购）→ 折中为 REQUIRE_HUMAN。
+    """
     r = evaluate(req(category=""), constraint)
+    assert r.decision == Decision.REQUIRE_HUMAN
+    assert "品类" in r.reason
+
+
+def test_missing_category_is_fine_without_category_whitelist():
+    """约束没有品类白名单时，请求缺品类不影响判定。"""
+    c = Constraint(monthly_budget_usd=200.0, single_tx_threshold_usd=50.0)
+    r = evaluate(req(category=""), c)
     assert r.decision == Decision.AUTO_APPROVE
 
 
@@ -207,5 +219,39 @@ def test_budget_reject_precedes_daily_threshold(constraint):
 def test_vendor_reject_precedes_budget_and_daily(constraint):
     """供应商越界应优先于预算/日阈值被拒。"""
     r = evaluate(req(vendor="Slack", amount=999.0), constraint, SpendContext(monthly_usd=150.0, daily_usd=80.0))
+    assert r.decision == Decision.REJECT
+    assert "不在白名单" in r.reason
+
+
+# ---------------------------------------------------------------- D12 压测发现的三类问题（已修）
+
+def test_vendor_match_is_case_insensitive(constraint):
+    """压测类 A：用户手写 "notion" 也应命中白名单里的 "Notion"。"""
+    r = evaluate(req(vendor="notion", amount=10.0), constraint)
+    assert r.decision == Decision.AUTO_APPROVE
+
+
+def test_vendor_match_ignores_surrounding_spaces(constraint):
+    """压测类 A：复制粘贴带空格也应命中白名单。"""
+    r = evaluate(req(vendor="  Notion  ", amount=10.0), constraint)
+    assert r.decision == Decision.AUTO_APPROVE
+
+
+def test_category_match_is_case_insensitive(constraint):
+    """压测类 A 扩展：品类 "saas" 与白名单 "SaaS" 视为同一个。"""
+    r = evaluate(req(category="saas", amount=10.0), constraint)
+    assert r.decision == Decision.AUTO_APPROVE
+
+
+def test_float_tail_amount_equal_to_threshold_is_auto_approve(constraint):
+    """压测类 H：0.1+0.2 之类的浮点尾数不应把「恰好等于阈值」误判成超限。"""
+    c = Constraint(monthly_budget_usd=200.0, single_tx_threshold_usd=50.0)
+    r = evaluate(req(amount=50.0 + 0.1 + 0.2 - 0.3), c)  # 浮点上可能略大于 50
+    assert r.decision == Decision.AUTO_APPROVE
+
+
+def test_vendor_not_in_whitelist_still_rejected_case_insensitively(constraint):
+    """归一化不能放宽白名单本身：真正不在名单里的仍然要拒。"""
+    r = evaluate(req(vendor="slack", amount=10.0), constraint)
     assert r.decision == Decision.REJECT
     assert "不在白名单" in r.reason
