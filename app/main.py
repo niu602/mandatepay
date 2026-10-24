@@ -508,8 +508,10 @@ def budget_summary():
 
     constraint = store.load_latest_constraint()
     budget = constraint.monthly_budget_usd if constraint else 0.0
-    spent = store.sum_completed_amount(month_start)
-    daily = store.sum_completed_amount(day_start)
+    # 预算口径 = 已承诺支出（下单即计入）；已到账单独给出，便于看真实扣款
+    spent = store.sum_spent_amount(month_start)
+    completed = store.sum_completed_amount(month_start)
+    daily = store.sum_spent_amount(day_start)
 
     day_of_month = int(now[8:10])
     days_in_month = 30  # 近似值：跨月天数对预测影响很小
@@ -518,6 +520,8 @@ def budget_summary():
     return {
         "monthly_budget_usd": budget,
         "monthly_spent_usd": round(spent, 2),
+        "monthly_completed_usd": round(completed, 2),
+        "monthly_committed_usd": round(spent - completed, 2),
         "remaining_usd": round(budget - spent, 2),
         "daily_spent_usd": round(daily, 2),
         "used_ratio": (spent / budget) if budget else 0.0,

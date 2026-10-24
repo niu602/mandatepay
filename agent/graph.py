@@ -107,9 +107,11 @@ def validate_node(state: AgentState) -> dict:
     now = _now_iso()
     month_start = now[:7] + "-01T00:00:00+00:00"  # 本月 1 号 00:00 UTC
     day_start = now[:10] + "T00:00:00+00:00"       # 今天 00:00 UTC
+    # 预算口径用「已承诺支出」（下单即计入），不是「已到账」——
+    # 否则 Agent 能连下多笔待支付订单把预算绕过（见 store.sum_spent_amount 注释）。
     spend = SpendContext(
-        monthly_usd=store.sum_completed_amount(month_start),
-        daily_usd=store.sum_completed_amount(day_start),
+        monthly_usd=store.sum_spent_amount(month_start),
+        daily_usd=store.sum_spent_amount(day_start),
     )
 
     result = evaluate(req, constraint, spend=spend)

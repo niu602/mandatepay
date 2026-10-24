@@ -359,15 +359,34 @@ def load_latest_constraint() -> Constraint | None:
 
 
 def sum_completed_amount(since_iso: str) -> float:
-    """统计 [since_iso, now) 区间内已完成支付（status=COMPLETED）的累计金额。
+    """统计 [since_iso, now) 区间内**已完成支付**（status=COMPLETED）的累计金额。
 
     只取 `payment` 层，避免一笔交易的三层记录重复计数。
-    供约束引擎做月度滚动预算 / 日累计阈值判断。
+    用于仪表盘展示"已到账"金额。
     """
     with _Conn() as db:
         row = db.cur().execute(
             "SELECT COALESCE(SUM(amount_usd), 0) AS total FROM mandates "
             "WHERE layer='payment' AND status='COMPLETED' AND created_at >= ?",
+            (since_iso,),
+        ).fetchone()
+    return float(row["total"]) if row else 0.0
+
+
+def sum_spent_amount(since_iso: str) -> float:
+    """统计 [since_iso, now) 区间内**已承诺支出**的累计金额 —— 预算口径用这个。
+
+    口径：**下单即计入**（order_id 存在即算），不只算已到账的。
+    原因：Agent 下单后订单处于 PAYER_ACTION_REQUIRED，钱虽然还没扣，但**已经承诺要花**。
+    若只统计 COMPLETED，Agent 可以连下多笔大额待支付订单把预算"绕过"——
+    这是约束引擎必须防的口径漏洞。
+
+    被拒绝的请求没有 order_id，天然不计入。
+    """
+    with _Conn() as db:
+        row = db.cur().execute(
+            "SELECT COALESCE(SUM(amount_usd), 0) AS total FROM mandates "
+            "WHERE layer='payment' AND COALESCE(order_id,'') <> '' AND created_at >= ?",
             (since_iso,),
         ).fetchone()
     return float(row["total"]) if row else 0.0

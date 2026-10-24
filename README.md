@@ -176,7 +176,9 @@ python -m uvicorn app.main:app --port 8888
 |---|---|---|
 | GET | `/` | 支付页（Web 流） |
 | GET | `/constraints` | 约束设定页 |
-| GET | `/audit` | 审计页 |
+| GET | `/budget` | 预算仪表盘（已承诺/剩余/月末预测/供应商分布） |
+| GET | `/approvals` | 采购审批台（列表 + 审批弹窗） |
+| GET | `/audit` | 审计页（三层 Mandate + 交易粒度分页） |
 | POST | `/api/create-order` | 创建订单（Web 流） |
 | POST | `/api/capture-order/{id}` | 捕获订单（Web 流） |
 | POST | `/api/webhook` | PayPal 回调（**已做官方签名校验**） |
@@ -305,7 +307,11 @@ REST 路径已验证，绝不替换；两条并存向评委展示"PayPal 集成�
 
 - [x] 沙箱支付闭环跑通（REST）
 - [x] LangGraph 七节点状态机（新增 insight / explain 两个 AI 决策节点）
-- [x] 约束引擎（滚动预算/双白名单/单笔+日累计双阈值）+ **单元测试 24 例**（`python -m pytest tests/`）
+- [x] **AI 推理链路**：`query_catalog` 多轮 tool loop（比较/消歧/查价，非分类器）
+- [x] 约束引擎（滚动预算/双白名单/单笔+日累计双阈值）+ **单元测试 30 例**（`python -m pytest tests/`）
+- [x] **约束压测**：50 约束 × 13 请求 = 650 次判定，三份独立参照实现交叉验证
+      （`STRESS_REPORT.md`）；发现并修复 4 类误拒/漏放，修复后误拒 0 / 漏放 0
+- [x] 前端四页：`/constraints` `/approvals` `/audit` `/budget`
 - [x] AI 决策解释（explain_node）+ 消费洞察（insight_node），模板兜底保底
 - [x] 三层 Mandate：一笔交易落 **3 条独立记录**（Intent/Cart/Payment，`trace_id` 串联）
 - [x] Agent 流接真实 PayPal Agent Toolkit

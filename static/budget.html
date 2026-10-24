@@ -94,10 +94,11 @@ async function load(){
 
   document.getElementById('kpis').innerHTML = `
     <div class="kpi"><div class="k">月度预算</div><div class="v">${money(budget)}</div><div class="d">滚动预算上限</div></div>
-    <div class="kpi ${d.over_budget?'warn':''}"><div class="k">本月已用</div><div class="v">${money(spent)}</div><div class="d">占比 ${(ratio*100).toFixed(1)}%</div></div>
+    <div class="kpi ${d.over_budget?'warn':''}"><div class="k">已承诺支出</div><div class="v">${money(spent)}</div><div class="d">下单即计入预算</div></div>
+    <div class="kpi"><div class="k">其中已到账</div><div class="v">${money(d.monthly_completed_usd)}</div><div class="d">待支付 ${money(d.monthly_committed_usd)}</div></div>
     <div class="kpi ${remain<0?'warn':'good'}"><div class="k">剩余额度</div><div class="v">${money(remain)}</div><div class="d">${remain<0?'已超预算':'可继续授权'}</div></div>
     <div class="kpi ${d.over_budget?'warn':''}"><div class="k">月末预测</div><div class="v">${money(proj)}</div><div class="d">按第 ${d.day_of_month} 天速率外推</div></div>
-    <div class="kpi"><div class="k">今日已用</div><div class="v">${money(d.daily_spent_usd)}</div><div class="d">日累计阈值校验依据</div></div>`;
+    <div class="kpi"><div class="k">今日已承诺</div><div class="v">${money(d.daily_spent_usd)}</div><div class="d">日累计阈值校验依据</div></div>`;
 
   const bar = document.getElementById('bar');
   bar.className = 'bar' + (d.over_budget ? ' over' : '');
@@ -109,7 +110,8 @@ async function load(){
   document.getElementById('alert').innerHTML = d.over_budget
     ? `<div class="warnbox"><b>⚠️ 预算风险</b>　按当前速率，月末预计花费 ${money(proj)}，将<b>超出</b>月度预算 ${money(budget)}。
        建议收紧单笔阈值或分批采购。</div>`
-    : `<div class="okbox">✓ 预算健康：已用 ${money(spent)} / ${money(budget)}，按当前速率月末预计 ${money(proj)}，仍在预算内。</div>`;
+    : `<div class="okbox">✓ 预算健康：已承诺 ${money(spent)} / ${money(budget)}（其中已到账 ${money(d.monthly_completed_usd)}），
+       按当前速率月末预计 ${money(proj)}，仍在预算内。</div>`;
 
   const vs = d.by_vendor || [];
   const max = Math.max(1, ...vs.map(v => v.amount_usd));

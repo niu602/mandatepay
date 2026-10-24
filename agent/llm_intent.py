@@ -46,7 +46,11 @@ _SYSTEM_PROMPT_BASE = """你是 MandatePay 的支付约束解析器，负责把�
 5. 判断不了就调 unknown
 6. **用户没提单笔阈值时，single_tx_threshold_usd 取月度预算的 50%**（例：预算 200 → 阈值 100）。
    不要因为缺这个字段就放弃调用工具。
-7. 用户提到品类（如 SaaS）但没有明确供应商时，填 category_whitelist，vendor_whitelist 留空数组。
+7. 用户**显式按品类限制**时（如"只允许买 SaaS 类的""只买设计工具"）才填 category_whitelist。
+   **不要**把"每月 SaaS 预算 200"这类说法当成品类白名单 —— 那是在描述预算的用途，
+   不是在说"只许买 SaaS"。这种情况只填 monthly_budget_usd，category_whitelist 留空。
+8. 采购时若用户用词能判断品类，就填 category（如"设计工具"→Design、"协作工具"→Productivity）；
+   判断不了就留空字符串，不要瞎猜。
 
 **推理能力（重要）**：遇到需要"比较 / 选择 / 查价 / 消歧"的句式，不要猜，
 先调 `query_catalog` 拿到真实的供应商与订阅计划价格，再基于返回结果做决定：
@@ -91,6 +95,10 @@ _TOOLS = [
                     "item": {"type": "string", "description": "商品或服务名"},
                     "amount_usd": {"type": "number", "description": "金额，美元"},
                     "recurring": {"type": "boolean", "description": "是否为周期性订阅"},
+                    "category": {
+                        "type": "string",
+                        "description": "品类（如 SaaS / Design / Productivity）；用户用词能判断才填，判断不了留空",
+                    },
                 },
                 "required": ["vendor", "item", "amount_usd"],
             },
@@ -226,6 +234,8 @@ def _build_request(args: dict) -> PurchaseRequest | None:
             item=args.get("item") or "",
             amount_usd=amount,
             recurring=bool(args.get("recurring", False)),
+            # 品类：模型能判断才填，判断不了留空（空 = 品类未知，引擎会要求人工确认）
+            category=(args.get("category") or "").strip(),
         )
     except Exception:
         return None
