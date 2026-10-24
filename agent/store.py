@@ -278,6 +278,15 @@ class _Conn:
             existing = {r["name"] for r in cur.execute("PRAGMA table_info(mandates)").fetchall()}
             if "amount_usd" not in existing:
                 cur.execute("ALTER TABLE mandates ADD COLUMN amount_usd REAL NOT NULL DEFAULT 0")
+        # mandates: 供应商（供预算仪表盘按供应商聚合）
+        if self.is_pg:
+            cur.execute(
+                "ALTER TABLE mandates ADD COLUMN IF NOT EXISTS vendor TEXT NOT NULL DEFAULT ''"
+            )
+        else:
+            existing = {r["name"] for r in cur.execute("PRAGMA table_info(mandates)").fetchall()}
+            if "vendor" not in existing:
+                cur.execute("ALTER TABLE mandates ADD COLUMN vendor TEXT NOT NULL DEFAULT ''")
 
     def __exit__(self, *exc):
         try:
@@ -362,6 +371,28 @@ def sum_completed_amount(since_iso: str) -> float:
             (since_iso,),
         ).fetchone()
     return float(row["total"]) if row else 0.0
+
+
+def sum_completed_by_vendor(since_iso: str) -> list[dict]:
+    """按供应商聚合区间内已完成支付的金额 —— 预算仪表盘的分布图数据源。"""
+    with _Conn() as db:
+        rows = db.cur().execute(
+            "SELECT COALESCE(NULLIF(vendor,''),'未标注') AS vendor, "
+            "COALESCE(SUM(amount_usd),0) AS amount, COUNT(*) AS cnt "
+            "FROM mandates WHERE layer='payment' AND status='COMPLETED' AND created_at >= ? "
+            "GROUP BY 1 ORDER BY amount DESC",
+            (since_iso,),
+        ).fetchall()
+    return [{"vendor": r["vendor"], "amount_usd": float(r["amount"]), "count": int(r["cnt"])} for r in rows]
+
+
+def count_mandates() -> int:
+    """交易总数（按 trace_id 去重）—— 审计页分页用。"""
+    with _Conn() as db:
+        row = db.cur().execute(
+            "SELECT COUNT(DISTINCT COALESCE(NULLIF(trace_id,''), 'legacy:' || id)) AS n FROM mandates"
+        ).fetchone()
+    return int(row["n"]) if row else 0
 
 
 # ── 供应商目录 / SaaS 订阅计划（P1 功能）──────────────────────────────
@@ -496,7 +527,7 @@ def save_request(r: PurchaseRequest, created_at: str | None = None) -> int:
 
 
 # ── MandateRecord（三层：intent / cart / payment 各一条）──────────────
-_COLS = "mandate_uuid, trace_id, layer, content, intent, cart, payment, status, decision, order_id, capture_id, amount_usd, created_at"
+_COLS = "mandate_uuid, trace_id, layer, content, intent, cart, payment, status, decision, order_id, capture_id, amount_usd, vendor, created_at"
 
 
 def _params(m: MandateRecord) -> tuple:
@@ -513,6 +544,7 @@ def _params(m: MandateRecord) -> tuple:
         m.order_id,
         m.capture_id,
         m.amount_usd,
+        m.vendor,
         m.created_at,
     )
 
@@ -529,7 +561,8 @@ def save_mandate(m: MandateRecord) -> int:
                      trace_id=EXCLUDED.trace_id, layer=EXCLUDED.layer, content=EXCLUDED.content,
                      intent=EXCLUDED.intent, cart=EXCLUDED.cart, payment=EXCLUDED.payment,
                      status=EXCLUDED.status, decision=EXCLUDED.decision,
-                     order_id=EXCLUDED.order_id, capture_id=EXCLUDED.capture_id
+                     order_id=EXCLUDED.order_id, capture_id=EXCLUDED.capture_id,
+                     amount_usd=EXCLUDED.amount_usd, vendor=EXCLUDED.vendor
                    RETURNING id""",
                 _params(m),
             ).fetchone()
@@ -644,6 +677,8 @@ def _aggregate(rows: list[dict]) -> list[dict]:
                 "decision": rep["decision"],
                 "order_id": rep["order_id"],
                 "capture_id": rep["capture_id"],
+                "amount_usd": float(rep.get("amount_usd") or 0),
+                "vendor": rep.get("vendor") or "",
                 "created_at": rep["created_at"],
                 # 分层明细，供审计详情展示（前端可按需消费）
                 "layers": {
@@ -660,13 +695,17 @@ def _aggregate(rows: list[dict]) -> list[dict]:
     return out
 
 
-def list_mandates(limit: int = 100) -> list[dict]:
-    """审计列表：一笔交易一行（三层聚合后）。"""
+def list_mandates(limit: int = 100, offset: int = 0) -> list[dict]:
+    """审计列表：一笔交易一行（三层聚合后），支持分页。
+
+    分页必须在**交易粒度**上做：先按 trace_id 聚合成交易，再切片。
+    若直接对原始三层的行做 LIMIT/OFFSET，会出现「一页 20 条其实只有 7 笔交易」
+    或「同一笔交易被切到两页」的错乱 —— 这是审计页最容易踩的坑。
+    """
     with _Conn() as db:
-        rows = db.cur().execute(
-            "SELECT * FROM mandates ORDER BY id DESC LIMIT ?", (limit * 3,)
-        ).fetchall()
-    return _aggregate(rows)[:limit]
+        rows = db.cur().execute("SELECT * FROM mandates ORDER BY id DESC").fetchall()
+    agg = _aggregate(rows)
+    return agg[offset: offset + limit]
 
 
 def list_mandate_layers(trace_id: str) -> list[dict]:

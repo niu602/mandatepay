@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MandatePay · 预算仪表盘</title>
+  <style>
+    * { box-sizing:border-box; }
+    body {
+      font-family:"Microsoft YaHei", system-ui, sans-serif;
+      max-width:1120px; margin:28px auto; padding:0 20px;
+      color:#1a2433; background:#f7f9fc; line-height:1.6;
+    }
+    h1 { font-size:24px; color:#003087; margin-bottom:4px; }
+    .sub { color:#5a6b82; font-size:14px; margin-bottom:18px; }
+    nav.top { margin-bottom:16px; font-size:14px; }
+    nav.top a { color:#0070ba; margin-right:16px; text-decoration:none; }
+    nav.top a:hover { text-decoration:underline; }
+    .card { background:#fff; border:1px solid #dbe3ee; border-radius:10px; padding:18px 20px; margin-bottom:18px; }
+    .card h2 { font-size:16px; margin:0 0 14px; color:#003087; }
+    /* KPI */
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:18px; }
+    .kpi { background:#fff; border:1px solid #dbe3ee; border-radius:10px; padding:16px 18px; }
+    .kpi .k { font-size:12px; color:#5a6b82; margin-bottom:6px; }
+    .kpi .v { font-size:26px; font-weight:700; color:#003087; line-height:1.2; }
+    .kpi .d { font-size:12px; color:#8a94a6; margin-top:4px; }
+    .kpi.warn .v { color:#c5221f; }
+    .kpi.good .v { color:#137333; }
+    /* 进度条 */
+    .bar { height:26px; border-radius:13px; background:#eef2f7; overflow:hidden; position:relative; margin:10px 0 6px; }
+    .bar > i { display:block; height:100%; background:linear-gradient(90deg,#0070ba,#00a3e0); border-radius:13px; }
+    .bar.over > i { background:linear-gradient(90deg,#d93025,#f2994a); }
+    .bar .proj { position:absolute; top:0; height:100%; border-right:3px dashed #b36b00; background:rgba(255,193,7,.22); }
+    .legend { display:flex; gap:18px; font-size:12px; color:#5a6b82; flex-wrap:wrap; }
+    .legend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+    /* 供应商分布 */
+    .vendor-row { display:flex; align-items:center; gap:10px; margin-bottom:9px; font-size:13px; }
+    .vendor-row .vn { width:96px; color:#1a2433; font-weight:600; flex-shrink:0; }
+    .vendor-row .vb { flex:1; height:20px; background:#eef2f7; border-radius:10px; overflow:hidden; }
+    .vendor-row .vb > i { display:block; height:100%; background:#00a3e0; border-radius:10px; }
+    .vendor-row .va { width:92px; text-align:right; color:#5a6b82; flex-shrink:0; }
+    .warnbox { background:#fce8e6; border-left:3px solid #d93025; padding:12px 16px; border-radius:0 8px 8px 0; font-size:13px; color:#8c1d18; margin-bottom:14px; }
+    .okbox { background:#e6f4ea; border-left:3px solid #137333; padding:12px 16px; border-radius:0 8px 8px 0; font-size:13px; color:#0d652d; }
+    .empty { color:#8a94a6; font-size:14px; padding:16px 0; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th,td { text-align:left; padding:9px 8px; border-bottom:1px solid #eef2f7; }
+    th { color:#5a6b82; font-weight:600; background:#fafbfd; }
+    .chip { display:inline-block; background:#e8f0fe; color:#1967d2; border-radius:11px; padding:2px 10px; font-size:12px; font-weight:600; margin:2px 4px 2px 0; }
+  </style>
+</head>
+<body>
+  <nav class="top"><a href="/constraints">· 约束设定</a><a href="/audit">· 审计日志</a><a href="/approvals">· 审批台</a><a href="/">· 支付测试</a></nav>
+  <h1>MandatePay · 预算仪表盘</h1>
+  <div class="sub">Agent 每一笔花钱都在预算之内 —— 剩余多少、会不会超，用数据说话</div>
+
+  <div id="alert"></div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="card">
+    <h2>本月预算使用情况</h2>
+    <div class="bar" id="bar"><i id="barUsed" style="width:0%"></i><div class="proj" id="barProj" style="left:0%;width:0%"></div></div>
+    <div class="legend">
+      <span><i style="background:#0070ba"></i>已用（已完成支付）</span>
+      <span><i style="background:rgba(255,193,7,.6);border:1px dashed #b36b00"></i>按当前速率预测的月末用量</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>按供应商分布（本月已完成支付）</h2>
+    <div id="vendors"><div class="empty">加载中……</div></div>
+  </div>
+
+  <div class="card">
+    <h2>约束阈值</h2>
+    <div id="thresholds"></div>
+  </div>
+
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const money = n => '$' + Number(n||0).toFixed(2);
+
+async function load(){
+  let d;
+  try { d = await (await fetch('/api/budget/summary')).json(); }
+  catch(e){ document.getElementById('kpis').innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`; return; }
+
+  const budget = d.monthly_budget_usd||0;
+  const spent = d.monthly_spent_usd||0;
+  const remain = d.remaining_usd||0;
+  const proj = d.projected_month_usd||0;
+  const ratio = Math.min(1, d.used_ratio||0);
+  const projRatio = Math.min(1, d.projected_ratio||0);
+
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><div class="k">月度预算</div><div class="v">${money(budget)}</div><div class="d">滚动预算上限</div></div>
+    <div class="kpi ${d.over_budget?'warn':''}"><div class="k">本月已用</div><div class="v">${money(spent)}</div><div class="d">占比 ${(ratio*100).toFixed(1)}%</div></div>
+    <div class="kpi ${remain<0?'warn':'good'}"><div class="k">剩余额度</div><div class="v">${money(remain)}</div><div class="d">${remain<0?'已超预算':'可继续授权'}</div></div>
+    <div class="kpi ${d.over_budget?'warn':''}"><div class="k">月末预测</div><div class="v">${money(proj)}</div><div class="d">按第 ${d.day_of_month} 天速率外推</div></div>
+    <div class="kpi"><div class="k">今日已用</div><div class="v">${money(d.daily_spent_usd)}</div><div class="d">日累计阈值校验依据</div></div>`;
+
+  const bar = document.getElementById('bar');
+  bar.className = 'bar' + (d.over_budget ? ' over' : '');
+  document.getElementById('barUsed').style.width = (ratio*100).toFixed(1)+'%';
+  const bp = document.getElementById('barProj');
+  bp.style.left = (ratio*100).toFixed(1)+'%';
+  bp.style.width = (Math.max(0, projRatio-ratio)*100).toFixed(1)+'%';
+
+  document.getElementById('alert').innerHTML = d.over_budget
+    ? `<div class="warnbox"><b>⚠️ 预算风险</b>　按当前速率，月末预计花费 ${money(proj)}，将<b>超出</b>月度预算 ${money(budget)}。
+       建议收紧单笔阈值或分批采购。</div>`
+    : `<div class="okbox">✓ 预算健康：已用 ${money(spent)} / ${money(budget)}，按当前速率月末预计 ${money(proj)}，仍在预算内。</div>`;
+
+  const vs = d.by_vendor || [];
+  const max = Math.max(1, ...vs.map(v => v.amount_usd));
+  document.getElementById('vendors').innerHTML = vs.length
+    ? vs.map(v => `<div class="vendor-row">
+        <span class="vn">${esc(v.vendor)}</span>
+        <span class="vb"><i style="width:${(v.amount_usd/max*100).toFixed(1)}%"></i></span>
+        <span class="va">${money(v.amount_usd)} × ${v.count}</span></div>`).join('')
+    : `<div class="empty">本月还没有已完成的支付。完成一笔后这里会出现分布图。</div>`;
+
+  const t = d.thresholds || {};
+  document.getElementById('thresholds').innerHTML = `
+    <div class="chip">单笔阈值 ${money(t.single_tx_threshold_usd)}</div>
+    <div class="chip">日累计阈值 ${t.daily_threshold_usd?money(t.daily_threshold_usd):'不限'}</div>
+    <div class="chip">供应商白名单：${esc((t.vendor_whitelist||[]).join('、')||'不限')}</div>
+    <div class="chip">品类白名单：${esc((t.category_whitelist||[]).join('、')||'不限')}</div>`;
+}
+load();
+</script>
+</body>
+</html>

@@ -93,6 +93,7 @@ class MandateRecord(BaseModel):
     order_id: str | None = None  # 真实支付成功后的 PayPal order id
     capture_id: str | None = None  # 捕获 id
     amount_usd: float = 0.0  # 本笔交易金额，供月度/日累计预算统计
+    vendor: str = ""  # 供应商，供预算仪表盘按供应商聚合
     created_at: str = Field(default_factory=_now_iso)
 
 
@@ -104,6 +105,7 @@ def build_mandate_trio(
     decision: Decision | None = None,
     trace_id: str | None = None,
     amount_usd: float = 0.0,
+    vendor: str = "",
 ) -> list[MandateRecord]:
     """按三层授权构造三条 Mandate 记录（共享同一 trace_id）。
 
@@ -115,16 +117,16 @@ def build_mandate_trio(
         MandateRecord(
             trace_id=trace, layer=MandateLayer.INTENT, content=intent,
             intent=intent, cart=cart, payment=payment, status=status, decision=decision,
-            amount_usd=amount_usd,
+            amount_usd=amount_usd, vendor=vendor,
         ),
         MandateRecord(
             trace_id=trace, layer=MandateLayer.CART, content=cart,
             intent=intent, cart=cart, payment=payment, status=status, decision=decision,
-            amount_usd=amount_usd,
+            amount_usd=amount_usd, vendor=vendor,
         ),
         MandateRecord(
             trace_id=trace, layer=MandateLayer.PAYMENT, content=payment,
             intent=intent, cart=cart, payment=payment, status=status, decision=decision,
-            amount_usd=amount_usd,
+            amount_usd=amount_usd, vendor=vendor,
         ),
     ]

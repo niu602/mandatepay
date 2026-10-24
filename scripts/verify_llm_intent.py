@@ -71,10 +71,21 @@ def main() -> int:
     for idx, (text, expect) in cases:
         results: list[str] = []
         intents: list[str] = []
+        traces: list[str] = []
         for _ in range(args.repeat):
-            intent, payload = parse_with_llm(text)
+            res = parse_with_llm(text)
+            if res is None:
+                intent, payload = "", None
+            else:
+                if res.request is not None:
+                    intent, payload = "PURCHASE_REQUEST", res.request
+                elif res.constraint is not None:
+                    intent, payload = "SET_CONSTRAINT", res.constraint
+                else:
+                    intent, payload = "", None
             intents.append(intent)
             results.append(_dump(payload))
+            traces.append(" → ".join(res.trace) if res else "")
 
         stable = len(set(results)) == 1
         hit = (expect is None) or (intents[0] == expect)
@@ -85,6 +96,8 @@ def main() -> int:
         print(f"\n[{idx}] {text}")
         print(f"    意图   : {intents[0] or '(无)'}" + (f"  期望 {expect}" if expect else ""))
         print(f"    JSON   : {results[0]}")
+        if traces[0]:
+            print(f"    工具轨迹: {traces[0]}")
         print(f"    稳定性 : {'一致' if stable else f'{len(set(results))} 种不同结果'}")
         print(f"    判定   : {flag}")
         if not stable:

@@ -8,52 +8,72 @@
     * { box-sizing: border-box; }
     body {
       font-family: "Microsoft YaHei", system-ui, sans-serif;
-      max-width: 1080px; margin: 32px auto; padding: 0 20px;
+      max-width: 1120px; margin: 28px auto; padding: 0 20px;
       color: #1a2433; background: #f7f9fc; line-height: 1.6;
     }
     h1 { font-size: 24px; color: #003087; margin-bottom: 4px; }
-    .sub { color: #5a6b82; font-size: 14px; margin-bottom: 24px; }
-    .card {
-      background: #fff; border: 1px solid #dbe3ee; border-radius: 10px;
-      padding: 18px 20px; margin-bottom: 20px;
-    }
-    .card h2 { font-size: 16px; margin: 0 0 12px; color: #003087; }
-    .kv { display: flex; gap: 8px; font-size: 14px; margin-bottom: 6px; }
-    .kv .k { color: #5a6b82; min-width: 130px; }
-    .kv .v { color: #1a2433; font-weight: 500; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #eef2f7; vertical-align: top; }
-    th { color: #5a6b82; font-weight: 600; background: #fafbfd; }
-    .badge {
-      display: inline-block; padding: 2px 9px; border-radius: 11px;
-      font-size: 12px; font-weight: 600; white-space: nowrap;
-    }
-    .b-approved { background: #e6f4ea; color: #137333; }
-    .b-pending  { background: #fef7e0; color: #9a6700; }
-    .b-rejected { background: #fce8e6; color: #c5221f; }
-    .b-completed{ background: #e8f0fe; color: #1967d2; }
-    .layer { font-size: 12px; color: #3c4a5e; }
-    .layer b { color: #003087; }
-    .btn {
-      display: inline-block; padding: 6px 14px; border-radius: 6px;
-      background: #0070ba; color: #fff; text-decoration: none;
-      font-size: 13px; border: none; cursor: pointer;
-    }
-    .btn:hover { background: #005c9d; }
-    .btn:disabled { background: #b8c4d4; cursor: not-allowed; }
-    .btn-sm { padding: 4px 10px; font-size: 12px; }
-    .empty { color: #8a94a6; font-size: 14px; padding: 20px 0; }
-    .note {
-      background: #fff8e1; border-left: 3px solid #f9ab00;
-      padding: 10px 14px; font-size: 13px; color: #6b5300; margin-bottom: 20px;
-    }
-    #msg { font-size: 13px; margin-top: 10px; }
-    .ok { color: #137333; } .err { color: #c5221f; }
+    .sub { color: #5a6b82; font-size: 14px; margin-bottom: 18px; }
+    nav.top { margin-bottom: 16px; font-size: 14px; }
+    nav.top a { color:#0070ba; margin-right:16px; text-decoration:none; }
+    nav.top a:hover { text-decoration: underline; }
+    .card { background:#fff; border:1px solid #dbe3ee; border-radius:10px; padding:18px 20px; margin-bottom:18px; }
+    .card h2 { font-size:16px; margin:0 0 12px; color:#003087; }
+    .kv { display:flex; gap:8px; font-size:14px; margin-bottom:6px; }
+    .kv .k { color:#5a6b82; min-width:130px; }
+    .kv .v { color:#1a2433; font-weight:500; }
+    .badge { display:inline-block; padding:2px 10px; border-radius:11px; font-size:12px; font-weight:700; white-space:nowrap; }
+    .b-approved { background:#e6f4ea; color:#137333; }
+    .b-pending_human { background:#fef7e0; color:#9a6700; }
+    .b-rejected { background:#fce8e6; color:#c5221f; }
+    .b-completed { background:#e8f0fe; color:#1967d2; }
+    .b-auto_approve { background:#e6f4ea; color:#137333; }
+    .b-require_human { background:#fef7e0; color:#9a6700; }
+    .b-reject { background:#fce8e6; color:#c5221f; }
+    .btn { display:inline-block; padding:6px 14px; border-radius:6px; background:#0070ba; color:#fff;
+           text-decoration:none; font-size:13px; border:none; cursor:pointer; }
+    .btn:hover { background:#005c9d; }
+    .btn.gray { background:#eef2f7; color:#003087; }
+    .btn.gray:hover { background:#dde5f0; }
+    .btn.danger { background:#c5221f; }
+    .btn.danger:hover { background:#a01b18; }
+    .btn-sm { padding:4px 10px; font-size:12px; }
+    .empty { color:#8a94a6; font-size:14px; padding:20px 0; }
+    .note { background:#fff8e1; border-left:3px solid #f9ab00; padding:10px 14px; font-size:13px; color:#6b5300; margin-bottom:18px; }
+    /* ── 交易卡片 ── */
+    .tx { border:1px solid #e3e9f2; border-radius:10px; margin-bottom:14px; background:#fff; overflow:hidden; }
+    .tx-head { display:flex; align-items:center; gap:12px; padding:12px 16px; background:#fafbfd; border-bottom:1px solid #eef2f7; flex-wrap:wrap; }
+    .tx-title { font-weight:700; color:#1a2433; font-size:15px; }
+    .tx-amt { font-weight:700; color:#003087; }
+    .tx-meta { font-size:12px; color:#5a6b82; }
+    .tx-spacer { flex:1; }
+    /* ── 三层授权可视化 ── */
+    .layers { display:grid; grid-template-columns: repeat(3, 1fr); gap:0; }
+    @media (max-width: 760px) { .layers { grid-template-columns:1fr; } }
+    .layer-box { padding:14px 16px; border-right:1px solid #eef2f7; position:relative; }
+    .layer-box:last-child { border-right:none; }
+    .layer-box .lname { font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; margin-bottom:5px; }
+    .layer-box.l-intent .lname { color:#7b3fbf; }
+    .layer-box.l-cart .lname { color:#0a7ea4; }
+    .layer-box.l-payment .lname { color:#b36b00; }
+    .layer-box .ltext { font-size:13px; color:#1a2433; word-break:break-word; }
+    .layer-box .lsub { font-size:11px; color:#8a94a6; margin-top:6px; word-break:break-all; }
+    .layer-connector { position:absolute; right:-9px; top:50%; transform:translateY(-50%);
+                       width:18px; height:18px; background:#0070ba; color:#fff; border-radius:50%;
+                       font-size:11px; line-height:18px; text-align:center; z-index:2; }
+    .layer-box:last-child .layer-connector { display:none; }
+    .tx-foot { display:flex; gap:8px; padding:10px 16px; border-top:1px solid #eef2f7; align-items:center; flex-wrap:wrap; }
+    .trace { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:11px; color:#8a94a6; }
+    /* ── 分页 ── */
+    .pager { display:flex; gap:8px; align-items:center; justify-content:center; margin-top:16px; font-size:13px; color:#5a6b82; }
+    .pager button:disabled { background:#eef2f7; color:#a9b4c4; cursor:not-allowed; }
+    #msg { font-size:13px; margin-top:10px; }
+    .ok { color:#137333; } .err { color:#c5221f; }
   </style>
 </head>
 <body>
+  <nav class="top"><a href="/constraints">· 约束设定</a><a href="/budget">· 预算仪表盘</a><a href="/approvals">· 审批台</a><a href="/">· 支付测试</a></nav>
   <h1>MandatePay · 三层 Mandate 审计日志</h1>
-  <div class="sub">让 AI 能安全地替人花钱 —— 每一笔交易都留下可审计的授权记录</div>
+  <div class="sub">每一笔交易都留下三层可追溯的授权记录：Intent（可以买什么）→ Cart（这次买什么）→ Payment（钱怎么扣）</div>
 
   <div class="note">
     <b>为什么需要「人确认」？</b> Agent 下单后订单状态为 <code>PAYER_ACTION_REQUIRED</code>，
@@ -67,104 +87,108 @@
   </div>
 
   <div class="card">
-    <h2>采购审批</h2>
-    <div class="kv">
-      <span class="k">供应商</span>
-      <input id="p-vendor" value="Notion" style="width:120px">
-      <span class="k" style="min-width:60px">商品</span>
-      <input id="p-item" value="Notion Pro" style="width:150px">
-      <span class="k" style="min-width:60px">金额</span>
-      <input id="p-amount" type="number" value="10" style="width:80px">
-      <button class="btn" onclick="submitPurchase()">提交采购</button>
-    </div>
-    <div id="msg"></div>
+    <h2>审计日志 <span id="totalHint" style="font-weight:400;color:#5a6b82;font-size:13px"></span></h2>
+    <div id="mandates"><div class="empty">加载中……</div></div>
+    <div class="pager" id="pager"></div>
   </div>
 
-  <div class="card">
-    <h2>审计日志</h2>
-    <div id="mandates"><div class="empty">加载中……</div></div>
-  </div>
+<div id="msg"></div>
 
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const PAGE_SIZE = 8;
+let page = 0, total = 0;
+
+function statusCls(s){ return 'b-' + String(s||'').toLowerCase(); }
 
 async function loadConstraint() {
   try {
-    const r = await fetch('/api/constraints/current');
-    const c = await r.json();
+    const c = await (await fetch('/api/constraints/current')).json();
     const el = document.getElementById('constraint');
     if (c.detail) { el.innerHTML = `<div class="empty">${esc(c.detail)}</div>`; return; }
     el.innerHTML = `
-      <div class="kv"><span class="k">月度预算</span><span class="v">$${c.monthly_budget_usd}</span></div>
+      <div class="kv"><span class="k">月度滚动预算</span><span class="v">$${c.monthly_budget_usd}</span></div>
       <div class="kv"><span class="k">单笔确认阈值</span><span class="v">$${c.single_tx_threshold_usd}</span></div>
-      <div class="kv"><span class="k">供应商白名单</span><span class="v">${(c.vendor_whitelist||[]).join(', ') || '—'}</span></div>
-      <div class="kv"><span class="k">品类白名单</span><span class="v">${(c.category_whitelist||[]).join(', ') || '—'}</span></div>`;
+      <div class="kv"><span class="k">日累计阈值</span><span class="v">${c.daily_threshold_usd ? '$'+c.daily_threshold_usd : '不限'}</span></div>
+      <div class="kv"><span class="k">供应商白名单</span><span class="v">${esc((c.vendor_whitelist||[]).join(', ') || '不限')}</span></div>
+      <div class="kv"><span class="k">品类白名单</span><span class="v">${esc((c.category_whitelist||[]).join(', ') || '不限')}</span></div>`;
   } catch (e) {
     document.getElementById('constraint').innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`;
   }
 }
 
+function layerBox(name, cls, obj, isLast){
+  if(!obj) return `<div class="layer-box l-${cls}"><div class="lname">${name}</div><div class="ltext">—</div></div>`;
+  return `<div class="layer-box l-${cls}">
+      <div class="lname">${name} · ${esc(obj.status||'')}</div>
+      <div class="ltext">${esc(obj.content||'')}</div>
+      <div class="lsub">uuid ${esc(obj.mandate_uuid||'')}<br>${esc((obj.created_at||'').slice(0,19).replace('T',' '))}</div>
+    </div>${isLast?'':'<div class="layer-connector">›</div>'}`;
+}
+
 async function loadMandates() {
+  const el = document.getElementById('mandates');
   try {
-    const r = await fetch('/api/mandates?limit=50');
-    const d = await r.json();
-    const el = document.getElementById('mandates');
-    if (!d.items || !d.items.length) { el.innerHTML = '<div class="empty">暂无记录</div>'; return; }
-    const rows = d.items.map(m => {
-      const cls = 'b-' + (m.status||'').toLowerCase();
+    const d = await (await fetch(`/api/mandates?limit=${PAGE_SIZE}&offset=${page*PAGE_SIZE}`)).json();
+    total = d.total || 0;
+    document.getElementById('totalHint').textContent = `共 ${total} 笔交易 · 第 ${page+1} 页`;
+    if (!d.items || !d.items.length) {
+      el.innerHTML = `<div class="empty">${page>0?'本页为空':'暂无记录'}</div>`;
+      renderPager(); return;
+    }
+    el.innerHTML = d.items.map(m => {
+      const L = m.layers || {};
       const canConfirm = m.order_id && m.status !== 'COMPLETED' && m.status !== 'REJECTED';
       const action = canConfirm
         ? `<a class="btn btn-sm" href="https://www.sandbox.paypal.com/checkoutnow?token=${esc(m.order_id)}" target="_blank">去确认付款</a>
-           <button class="btn btn-sm" style="margin-top:4px" onclick="confirmPay('${esc(m.order_id)}','${esc(m.mandate_uuid)}')">我已付款·捕获</button>`
-        : (m.status === 'COMPLETED' ? '<span class="badge b-completed">已扣款</span>' : '—');
-      return `<tr>
-        <td>${esc((m.created_at||'').slice(0,19).replace('T',' '))}</td>
-        <td>
-          <div class="layer"><b>Intent</b> ${esc(m.intent)}</div>
-          <div class="layer"><b>Cart</b> ${esc(m.cart)}</div>
-          <div class="layer"><b>Payment</b> ${esc(m.payment)}</div>
-        </td>
-        <td><span class="badge ${cls}">${esc(m.status)}</span><div class="layer">${esc(m.decision||'')}</div></td>
-        <td style="font-size:12px">${m.order_id ? esc(m.order_id) : '—'}<br>${m.capture_id ? 'cap:'+esc(m.capture_id):''}</td>
-        <td>${action}</td>
-      </tr>`;
+           <button class="btn btn-sm gray" onclick="confirmPay('${esc(m.order_id)}','${esc(m.mandate_uuid)}')">我已付款·捕获</button>`
+        : (m.status === 'COMPLETED' ? '<span class="badge b-completed">已扣款</span>' : '');
+      return `<div class="tx">
+        <div class="tx-head">
+          <span class="tx-title">${esc(m.vendor || (m.cart||'').split('×')[0].trim() || '—')}</span>
+          <span class="tx-amt">$${Number(m.amount_usd||0).toFixed(2)}</span>
+          <span class="badge ${statusCls(m.status)}">${esc(m.status)}</span>
+          ${m.decision ? `<span class="badge b-${esc(m.decision.toLowerCase())}">${esc(m.decision)}</span>` : ''}
+          <span class="tx-spacer"></span>
+          <span class="tx-meta">${esc((m.created_at||'').slice(0,19).replace('T',' '))}</span>
+        </div>
+        <div class="layers">
+          ${layerBox('Intent 层', 'intent', L.intent, false)}
+          ${layerBox('Cart 层', 'cart', L.cart, false)}
+          ${layerBox('Payment 层', 'payment', L.payment, true)}
+        </div>
+        <div class="tx-foot">
+          ${action}
+          ${m.order_id ? `<span class="trace">order ${esc(m.order_id)}</span>` : ''}
+          ${m.capture_id ? `<span class="trace">capture ${esc(m.capture_id)}</span>` : ''}
+          <span class="tx-spacer"></span>
+          <span class="trace">trace ${esc(m.trace_id||'—')}</span>
+        </div>
+      </div>`;
     }).join('');
-    el.innerHTML = `<table>
-      <thead><tr><th>时间</th><th>三层 Mandate</th><th>状态</th><th>PayPal</th><th>操作</th></tr></thead>
-      <tbody>${rows}</tbody></table>`;
+    renderPager();
   } catch (e) {
-    document.getElementById('mandates').innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`;
+    el.innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`;
   }
 }
 
-async function submitPurchase() {
-  const msg = document.getElementById('msg');
-  msg.className = ''; msg.textContent = '提交中……';
-  const body = {
-    vendor: document.getElementById('p-vendor').value,
-    item: document.getElementById('p-item').value,
-    amount_usd: parseFloat(document.getElementById('p-amount').value)
-  };
-  try {
-    const r = await fetch('/api/agent/requests', {
-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
-    });
-    const d = await r.json();
-    msg.className = r.ok ? 'ok' : 'err';
-    msg.textContent = `${d.decision} — ${d.reason}`;
-    loadMandates();
-  } catch (e) { msg.className = 'err'; msg.textContent = '提交失败: ' + e; }
+function renderPager(){
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  document.getElementById('pager').innerHTML = `
+    <button class="btn btn-sm gray" ${page<=0?'disabled':''} onclick="goPage(${page-1})">‹ 上一页</button>
+    <span>第 ${page+1} / ${pages} 页</span>
+    <button class="btn btn-sm gray" ${page>=pages-1?'disabled':''} onclick="goPage(${page+1})">下一页 ›</button>`;
 }
+function goPage(p){ page = Math.max(0, p); loadMandates(); window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'}); }
 
 async function confirmPay(orderId, mandateUuid) {
   const msg = document.getElementById('msg');
   msg.className = ''; msg.textContent = '捕获中……';
   try {
-    const r = await fetch('/api/mandates/confirm', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
+    const d = await (await fetch('/api/mandates/confirm', {
+      method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({order_id: orderId, mandate_uuid: mandateUuid})
-    });
-    const d = await r.json();
+    })).json();
     msg.className = d.completed ? 'ok' : 'err';
     msg.textContent = d.completed
       ? `✅ 闭环完成 —— capture ${d.capture_id}`

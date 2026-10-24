@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MandatePay · 采购审批台</title>
+  <style>
+    * { box-sizing:border-box; }
+    body { font-family:"Microsoft YaHei", system-ui, sans-serif; max-width:1120px; margin:28px auto;
+           padding:0 20px; color:#1a2433; background:#f7f9fc; line-height:1.6; }
+    h1 { font-size:24px; color:#003087; margin-bottom:4px; }
+    .sub { color:#5a6b82; font-size:14px; margin-bottom:18px; }
+    nav.top { margin-bottom:16px; font-size:14px; }
+    nav.top a { color:#0070ba; margin-right:16px; text-decoration:none; }
+    nav.top a:hover { text-decoration:underline; }
+    .card { background:#fff; border:1px solid #dbe3ee; border-radius:10px; padding:18px 20px; margin-bottom:18px; }
+    .card h2 { font-size:16px; margin:0 0 12px; color:#003087; }
+    .tabs { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+    .tab { padding:6px 14px; border-radius:20px; border:1px solid #c6d2e2; background:#fff; cursor:pointer;
+           font-size:13px; color:#5a6b82; }
+    .tab.on { background:#0070ba; color:#fff; border-color:#0070ba; }
+    .req { border:1px solid #e3e9f2; border-radius:10px; margin-bottom:12px; background:#fff; overflow:hidden; }
+    .req-head { display:flex; align-items:center; gap:12px; padding:12px 16px; background:#fafbfd;
+                border-bottom:1px solid #eef2f7; flex-wrap:wrap; cursor:pointer; }
+    .req-head:hover { background:#f2f6fb; }
+    .req-title { font-weight:700; font-size:15px; }
+    .req-amt { font-weight:700; color:#003087; }
+    .req-meta { font-size:12px; color:#5a6b82; }
+    .spacer { flex:1; }
+    .badge { display:inline-block; padding:2px 10px; border-radius:11px; font-size:12px; font-weight:700; }
+    .b-approved { background:#e6f4ea; color:#137333; }
+    .b-pending_human { background:#fef7e0; color:#9a6700; }
+    .b-rejected { background:#fce8e6; color:#c5221f; }
+    .b-completed { background:#e8f0fe; color:#1967d2; }
+    .btn { display:inline-block; padding:7px 15px; border-radius:6px; background:#0070ba; color:#fff;
+           text-decoration:none; font-size:13px; border:none; cursor:pointer; }
+    .btn:hover { background:#005c9d; }
+    .btn.gray { background:#eef2f7; color:#003087; }
+    .btn.gray:hover { background:#dde5f0; }
+    .btn.danger { background:#c5221f; }
+    .btn.danger:hover { background:#a01b18; }
+    .btn-sm { padding:4px 11px; font-size:12px; }
+    .layers { display:grid; grid-template-columns:repeat(3,1fr); }
+    @media(max-width:760px){ .layers{ grid-template-columns:1fr; } }
+    .layer-box { padding:12px 15px; border-right:1px solid #eef2f7; }
+    .layer-box:last-child { border-right:none; }
+    .layer-box .lname { font-size:11px; font-weight:700; letter-spacing:.06em; margin-bottom:4px; }
+    .layer-box.l-intent .lname { color:#7b3fbf; }
+    .layer-box.l-cart .lname { color:#0a7ea4; }
+    .layer-box.l-payment .lname { color:#b36b00; }
+    .layer-box .ltext { font-size:13px; }
+    .req-foot { display:flex; gap:8px; padding:10px 16px; border-top:1px solid #eef2f7; align-items:center; flex-wrap:wrap; }
+    .trace { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; color:#8a94a6; }
+    /* 弹窗 */
+    .mask { position:fixed; inset:0; background:rgba(16,26,43,.45); display:none; z-index:50;
+            align-items:center; justify-content:center; padding:20px; }
+    .mask.on { display:flex; }
+    .modal { background:#fff; border-radius:12px; max-width:680px; width:100%; max-height:88vh; overflow:auto;
+             box-shadow:0 18px 48px rgba(16,26,43,.28); }
+    .modal-h { padding:18px 22px 12px; border-bottom:1px solid #eef2f7; display:flex; align-items:center; gap:10px; }
+    .modal-h h3 { margin:0; font-size:17px; color:#003087; flex:1; }
+    .x { cursor:pointer; border:none; background:#f0f2f5; color:#5a6b82; width:28px; height:28px;
+         border-radius:50%; font-size:15px; line-height:1; }
+    .modal-b { padding:16px 22px; }
+    .modal-f { padding:12px 22px 18px; display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
+    .kv { display:flex; gap:8px; font-size:14px; margin-bottom:7px; }
+    .kv .k { color:#5a6b82; min-width:110px; }
+    .kv .v { font-weight:500; word-break:break-all; }
+    .modal .layers { border:1px solid #e3e9f2; border-radius:8px; margin:12px 0; }
+    .note { background:#fff8e1; border-left:3px solid #f9ab00; padding:10px 14px; font-size:13px;
+            color:#6b5300; border-radius:0 8px 8px 0; margin-bottom:14px; }
+    #msg { font-size:13px; margin-top:10px; }
+    .ok { color:#137333; } .err { color:#c5221f; }
+    .empty { color:#8a94a6; font-size:14px; padding:18px 0; }
+  </style>
+</head>
+<body>
+  <nav class="top"><a href="/constraints">· 约束设定</a><a href="/audit">· 审计日志</a><a href="/budget">· 预算仪表盘</a><a href="/">· 支付测试</a></nav>
+  <h1>MandatePay · 采购审批台</h1>
+  <div class="sub">Agent 在授权范围内自主下单，超过阈值的则停下来等人 —— 人拿最终否决权</div>
+
+  <div class="card">
+    <h2>采购请求</h2>
+    <div class="tabs" id="tabs">
+      <button class="tab on" data-f="pending">待我审批</button>
+      <button class="tab" data-f="all">全部请求</button>
+      <button class="tab" data-f="COMPLETED">已完成</button>
+      <button class="tab" data-f="REJECTED">已拒绝</button>
+    </div>
+    <div id="list"><div class="empty">加载中……</div></div>
+  </div>
+
+<div id="msg"></div>
+
+<!-- 审批弹窗 -->
+<div class="mask" id="mask">
+  <div class="modal">
+    <div class="modal-h"><h3 id="mTitle">采购请求详情</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-b" id="mBody"></div>
+    <div class="modal-f" id="mFoot"></div>
+  </div>
+</div>
+
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let filter = 'pending', current = null;
+
+async function loadList(){
+  const el = document.getElementById('list');
+  el.innerHTML = '<div class="empty">加载中……</div>';
+  try{
+    const d = await (await fetch('/api/approvals?status='+filter)).json();
+    const items = d.items||[];
+    if(!items.length){ el.innerHTML = '<div class="empty">没有符合条件的请求</div>'; return; }
+    el.innerHTML = items.map((m,i)=>{
+      const pending = m.status==='PENDING_HUMAN';
+      return `<div class="req">
+        <div class="req-head" onclick="openModal(${i})">
+          <span class="req-title">${esc(m.vendor||'—')}</span>
+          <span class="req-amt">$${Number(m.amount_usd||0).toFixed(2)}</span>
+          <span class="badge b-${String(m.status||'').toLowerCase()}">${esc(m.status)}</span>
+          ${m.decision?`<span class="req-meta">${esc(m.decision)}</span>`:''}
+          <span class="spacer"></span>
+          <span class="req-meta">${esc((m.created_at||'').slice(0,19).replace('T',' '))}</span>
+          <span class="req-meta">${pending?'点击处理 ›':'详情 ›'}</span>
+        </div>
+        <div class="req-foot">
+          <span class="trace">${esc((m.cart||'').slice(0,60))}</span>
+          <span class="spacer"></span>
+          ${m.order_id?`<span class="trace">order ${esc(m.order_id)}</span>`:''}
+        </div>
+      </div>`;
+    }).join('');
+    window.__ITEMS = items;
+  }catch(e){ el.innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`; }
+}
+
+function openModal(i){
+  const m = (window.__ITEMS||[])[i]; if(!m) return;
+  current = m;
+  const L = m.layers||{};
+  const box = (name,cls,o)=> o ? `<div class="layer-box l-${cls}"><div class="lname">${name} · ${esc(o.status||'')}</div>
+      <div class="ltext">${esc(o.content||'')}</div></div>` : `<div class="layer-box l-${cls}"><div class="lname">${name}</div><div class="ltext">—</div></div>`;
+  document.getElementById('mTitle').textContent = `${m.vendor||'采购'} · $${Number(m.amount_usd||0).toFixed(2)}`;
+  document.getElementById('mBody').innerHTML = `
+    <div class="note">这笔请求超出 Agent 的单笔授权额度，因此<b>停下来等人确认</b>。你批准后 Agent 才继续，人始终握有最终授权权。</div>
+    <div class="kv"><span class="k">供应商</span><span class="v">${esc(m.vendor||'—')}</span></div>
+    <div class="kv"><span class="k">商品</span><span class="v">${esc(m.cart||'—')}</span></div>
+    <div class="kv"><span class="k">金额</span><span class="v">$${Number(m.amount_usd||0).toFixed(2)}</span></div>
+    <div class="kv"><span class="k">引擎判定</span><span class="v">${esc(m.decision||'—')}</span></div>
+    <div class="kv"><span class="k">状态</span><span class="v"><span class="badge b-${String(m.status||'').toLowerCase()}">${esc(m.status)}</span></span></div>
+    <div class="kv"><span class="k">trace_id</span><span class="v">${esc(m.trace_id||'—')}</span></div>
+    <div class="layers">
+      ${box('Intent 层','intent',L.intent)}${box('Cart 层','cart',L.cart)}${box('Payment 层','payment',L.payment)}
+    </div>
+    ${m.order_id?`<div class="kv"><span class="k">PayPal 订单</span><span class="v">${esc(m.order_id)}</span></div>`:''}`;
+
+  const foot = document.getElementById('mFoot');
+  const canPay = m.order_id && m.status!=='COMPLETED' && m.status!=='REJECTED';
+  foot.innerHTML = `
+    ${canPay?`<a class="btn" href="https://www.sandbox.paypal.com/checkoutnow?token=${esc(m.order_id)}" target="_blank">① 去 PayPal 付款</a>`:''}
+    ${canPay?`<button class="btn gray" onclick="confirmPay()">② 我已付款·捕获</button>`:''}
+    ${m.status!=='COMPLETED'&&m.status!=='REJECTED'?`<button class="btn danger" onclick="rejectIt()">✕ 拒绝</button>`:''}
+    <button class="btn gray" onclick="closeModal()">关闭</button>`;
+  document.getElementById('mask').classList.add('on');
+}
+function closeModal(){ document.getElementById('mask').classList.remove('on'); current=null; }
+document.getElementById('mask').addEventListener('click', e=>{ if(e.target.id==='mask') closeModal(); });
+
+async function confirmPay(){
+  if(!current) return;
+  const msg=document.getElementById('msg'); msg.className=''; msg.textContent='捕获中……';
+  try{
+    const d = await (await fetch('/api/mandates/confirm',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({order_id:current.order_id, mandate_uuid:current.mandate_uuid})})).json();
+    msg.className = d.completed?'ok':'err';
+    msg.textContent = d.completed ? `✅ 闭环完成 —— capture ${d.capture_id}` : `未捕获成功（状态 ${d.status}）。请确认已在 PayPal 点完「完成购买」。`;
+    closeModal(); loadList();
+  }catch(e){ msg.className='err'; msg.textContent='捕获失败: '+e; }
+}
+
+async function rejectIt(){
+  if(!current) return;
+  const msg=document.getElementById('msg'); msg.className=''; msg.textContent='拒绝中……';
+  try{
+    const d = await (await fetch(`/api/approvals/${encodeURIComponent(current.trace_id)}/reject`,{method:'POST'})).json();
+    msg.className='ok'; msg.textContent=`✕ 已拒绝（更新 ${d.updated} 条分层记录）`;
+    closeModal(); loadList();
+  }catch(e){ msg.className='err'; msg.textContent='拒绝失败: '+e; }
+}
+
+document.getElementById('tabs').addEventListener('click', e=>{
+  const b=e.target.closest('.tab'); if(!b) return;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  b.classList.add('on'); filter=b.dataset.f; loadList();
+});
+loadList();
+</script>
+</body>
+</html>

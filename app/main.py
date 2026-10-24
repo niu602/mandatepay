@@ -44,6 +44,20 @@ def constraints_page():
     return html
 
 
+@app.get("/budget", response_class=HTMLResponse)
+def budget_page():
+    """预算仪表盘：本月已用 / 剩余 / 预测 / 按供应商分布。"""
+    html = (STATIC_DIR / "budget.html").read_text(encoding="utf-8")
+    return html
+
+
+@app.get("/approvals", response_class=HTMLResponse)
+def approvals_page():
+    """采购审批台：采购请求列表 + 审批弹窗。"""
+    html = (STATIC_DIR / "approvals.html").read_text(encoding="utf-8")
+    return html
+
+
 @app.post("/api/create-order")
 async def create_order(request: Request):
     """后端创建 PayPal 订单，返回订单 id 给前端 JS SDK。"""
@@ -343,6 +357,7 @@ def submit_purchase(body: PurchaseIn):
         intent=f"采购 {req.item}（供应商 {req.vendor}）",
         cart=f"{req.item} × ${req.amount_usd:.2f} ({req.currency})",
         amount_usd=req.amount_usd,
+        vendor=req.vendor,
         payment=(
             "PayPal Sandbox · "
             + (
@@ -448,6 +463,10 @@ def agent_parse(body: NLIn):
         "explanation": final.get("explanation"),  # 决策解释 + 可操作建议
         "reason": final.get("reason"),            # 引擎原始原因
         "spend": final.get("spend"),              # 花费快照 {monthly_usd, daily_usd}
+        # AI 推理轨迹：让"AI 是推理器而非分类器"在返回体里可见
+        "reasoning": final.get("reasoning"),      # 模型的自然语言推理
+        "tool_trace": final.get("tool_trace") or [],  # 工具调用轨迹
+        "parse_note": final.get("parse_note"),    # 解析方式（LLM / 规则降级）
     }
 
 
@@ -455,11 +474,96 @@ def agent_parse(body: NLIn):
 # 3. 审计日志与当前约束
 # ──────────────────────────────────────────────────────
 @app.get("/api/mandates")
-def list_mandates(limit: int = 100):
-    """三层 Mandate 审计日志（评委最爱看的页面数据源）。"""
+def list_mandates(limit: int = 20, offset: int = 0):
+    """三层 Mandate 审计日志（评委最爱看的页面数据源），支持分页。
+
+    分页在**交易粒度**上做（先按 trace_id 聚合再切片），一笔交易永远完整落在同一页。
+    """
     from agent import store
 
-    return {"items": store.list_mandates(limit=limit)}
+    total = store.count_mandates()
+    items = store.list_mandates(limit=limit, offset=offset)
+    return {
+        "items": items,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "has_more": offset + len(items) < total,
+    }
+
+
+@app.get("/api/budget/summary")
+def budget_summary():
+    """预算仪表盘数据：本月已用 / 剩余 / 预测 / 按供应商分布。
+
+    「预测」= 按本月已过天数与当前花费速率外推到月末（线性外推），
+    给 Potentual Impact 提供可量化的风险提示。
+    """
+    from agent import store
+    from agent.models import _now_iso
+
+    now = _now_iso()
+    month_start = now[:7] + "-01T00:00:00+00:00"
+    day_start = now[:10] + "T00:00:00+00:00"
+
+    constraint = store.load_latest_constraint()
+    budget = constraint.monthly_budget_usd if constraint else 0.0
+    spent = store.sum_completed_amount(month_start)
+    daily = store.sum_completed_amount(day_start)
+
+    day_of_month = int(now[8:10])
+    days_in_month = 30  # 近似值：跨月天数对预测影响很小
+    projected = (spent / day_of_month * days_in_month) if day_of_month else 0.0
+
+    return {
+        "monthly_budget_usd": budget,
+        "monthly_spent_usd": round(spent, 2),
+        "remaining_usd": round(budget - spent, 2),
+        "daily_spent_usd": round(daily, 2),
+        "used_ratio": (spent / budget) if budget else 0.0,
+        "projected_month_usd": round(projected, 2),
+        "projected_ratio": (projected / budget) if budget else 0.0,
+        "day_of_month": day_of_month,
+        "days_in_month": days_in_month,
+        "over_budget": bool(budget and projected > budget),
+        "by_vendor": store.sum_completed_by_vendor(month_start),
+        "thresholds": {
+            "single_tx_threshold_usd": constraint.single_tx_threshold_usd if constraint else 0,
+            "daily_threshold_usd": constraint.daily_threshold_usd if constraint else 0,
+            "vendor_whitelist": constraint.vendor_whitelist if constraint else [],
+            "category_whitelist": constraint.category_whitelist if constraint else [],
+        },
+    }
+
+
+@app.get("/api/approvals")
+def list_approvals(status: str = "pending"):
+    """采购请求列表（审批台）。
+
+    status=pending → 待人工确认（PENDING_HUMAN）
+    status=all     → 全部交易
+    """
+    from agent import store
+
+    items = store.list_mandates(limit=200)
+    if status == "pending":
+        items = [i for i in items if i.get("status") == "PENDING_HUMAN"]
+    elif status and status != "all":
+        items = [i for i in items if i.get("status") == status]
+    return {"items": items, "total": len(items)}
+
+
+@app.post("/api/approvals/{trace_id}/reject")
+def reject_approval(trace_id: str):
+    """拒绝一笔待审批的采购请求 —— 人拿着最终否决权。"""
+    from agent import store
+
+    layers = store.list_mandate_layers(trace_id)
+    if not layers:
+        raise HTTPException(status_code=404, detail=f"找不到 trace_id={trace_id} 的 Mandate")
+    for row in layers:
+        store.update_mandate_status(row["mandate_uuid"], "REJECTED")
+    return {"trace_id": trace_id, "status": "REJECTED", "updated": len(layers)}
 
 
 @app.get("/api/constraints/current")

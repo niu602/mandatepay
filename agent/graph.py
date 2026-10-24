@@ -47,22 +47,43 @@ class AgentState(TypedDict, total=False):
     reason: str | None   # 引擎判定原因（供 explain 使用）
     insight: str         # 消费洞察一句话
     explanation: str     # 决策解释 + 可操作建议
+    # AI 推理轨迹（Demo 展示"AI 怎么想的"）
+    reasoning: str       # 模型的自然语言推理
+    tool_trace: list[str]  # 工具调用轨迹
+    parse_note: str      # 解析方式说明（LLM / 规则降级）
 
 
 # ── 节点 ───────────────────────────────────────────────
 def parse_node(state: AgentState) -> dict:
-    """节点 1：解析自然语言 → 约束 / 采购请求，并写库。"""
+    """节点 1：解析自然语言 → 约束 / 采购请求，并写库。
+
+    模型可能一次同时给出「更新约束 + 下单」（如"预算看着办"这类表述），
+    两者都要落库，采购请求优先驱动后续流程。
+    """
     msgs = state.get("messages") or []
     user_msg = msgs[-1].content if msgs else ""
     parsed = parse(user_msg)
 
-    if parsed.intent is Intent.SET_CONSTRAINT:
+    out: dict = {
+        "reasoning": parsed.reasoning,
+        "tool_trace": list(parsed.trace),
+        "parse_note": parsed.note,
+    }
+
+    if parsed.constraint is not None:
         store.save_constraint(parsed.constraint, _now_iso())
-        return {"constraint": parsed.constraint, "decision": "PARSED_CONSTRAINT"}
+        out["constraint"] = parsed.constraint
+
+    if parsed.intent is Intent.SET_CONSTRAINT:
+        out["decision"] = "PARSED_CONSTRAINT"
+        return out
     if parsed.intent is Intent.PURCHASE_REQUEST:
         store.save_request(parsed.request, _now_iso())
-        return {"request": parsed.request, "decision": "PARSED_REQUEST"}
-    return {"error": parsed.note}
+        out["request"] = parsed.request
+        out["decision"] = "PARSED_REQUEST"
+        return out
+    out["error"] = parsed.note
+    return out
 
 
 def validate_node(state: AgentState) -> dict:
@@ -152,6 +173,7 @@ def approve_node(state: AgentState) -> dict:
         intent=f"采购 {req.item}（供应商 {req.vendor}）",
         cart=f"{req.item} × ${req.amount_usd:.2f} ({req.currency})",
         amount_usd=req.amount_usd,
+        vendor=req.vendor,
         payment=(
             "PayPal Sandbox · "
             + (

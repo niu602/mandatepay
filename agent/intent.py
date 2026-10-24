@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from .llm_intent import parse_with_llm
@@ -31,6 +31,8 @@ class ParsedIntent:
     constraint: Constraint | None = None
     request: PurchaseRequest | None = None
     note: str = ""
+    reasoning: str = ""                    # 模型给出的自然语言推理（Demo 展示用）
+    trace: list[str] = field(default_factory=list)  # 工具调用轨迹
 
 
 # 常见 SaaS / 供应商名，用于从商品名里抽出 vendor
@@ -69,14 +71,47 @@ def _extract_vendor(text: str, item: str) -> str:
 def parse(text: str) -> ParsedIntent:
     """解析一句话。
 
-    策略：优先 DeepSeek function calling（配了 key 才生效），
-    失败或无 key 时自动降级到规则解析，保证 demo 永远可跑。
+    策略：优先 LLM function calling（配了 key 才生效），支持多轮工具调用
+    （模型可先查供应商目录再决策），失败或无 key 时自动降级到规则解析，
+    保证 demo 永远可跑。
+
+    把「当前生效约束」喂给模型，让"预算看着办"这类模糊表述有据可依。
     """
-    llm_intent, payload = parse_with_llm(text)
-    if llm_intent == "SET_CONSTRAINT" and isinstance(payload, Constraint):
-        return ParsedIntent(Intent.SET_CONSTRAINT, constraint=payload, note="LLM(function calling)解析为约束")
-    if llm_intent == "PURCHASE_REQUEST" and isinstance(payload, PurchaseRequest):
-        return ParsedIntent(Intent.PURCHASE_REQUEST, request=payload, note="LLM(function calling)解析为采购请求")
+    from agent import store
+
+    try:
+        current = store.load_latest_constraint()
+    except Exception:
+        current = None
+
+    res = parse_with_llm(text, current_constraint=current)
+    if res is not None:
+        # 可能同时给出约束与采购请求 —— 采购优先（它是动作），约束一并保留待落库
+        if res.request is not None:
+            note = "LLM(function calling + 工具循环)解析为采购请求"
+            if res.constraint is not None:
+                note += "（同时含约束更新）"
+            if res.trace:
+                note += f"｜工具轨迹: {' → '.join(res.trace)}"
+            return ParsedIntent(
+                Intent.PURCHASE_REQUEST,
+                constraint=res.constraint,
+                request=res.request,
+                note=note,
+                reasoning=res.reasoning,
+                trace=list(res.trace),
+            )
+        if res.constraint is not None:
+            note = "LLM(function calling)解析为约束"
+            if res.trace:
+                note += f"｜工具轨迹: {' → '.join(res.trace)}"
+            return ParsedIntent(
+                Intent.SET_CONSTRAINT,
+                constraint=res.constraint,
+                note=note,
+                reasoning=res.reasoning,
+                trace=list(res.trace),
+            )
 
     # 降级：规则解析
     text = text.strip()
