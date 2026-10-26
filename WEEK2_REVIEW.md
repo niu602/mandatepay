@@ -110,6 +110,19 @@ parse → validate → insight → explain → approve → pay → verify
 | 9 | ~~**月度预算只统计 COMPLETED**~~ | ✅ **已修**：改为「已承诺支出」口径（下单即计入），否则 Agent 能连下多笔待支付订单绕过预算；仪表盘同时给出已到账/待支付拆分 | ~~ | ~~ |
 | 10 | **SQLite / PostgreSQL 双后端只测了 PG** | 迁移脚本写了但 SQLite 路径未跑过完整回归 | 低 | 0.5 天 |
 | 11 | **Demo 依赖数据清场** | 预算按"已承诺"口径后，测试期订单会占满预算 → 录制前必须跑 `reset_demo_data.py --confirm` | **高** | 5 分钟 |
+| 12 | **所有 `/api/*` 端点无鉴权** | `app/main.py` 无认证中间件，`/api/mandates` 返回全部交易数据。Demo 本地跑可接受，**上线前必须补** | **高** | 1 天 |
+| 13 | **access_token 无缓存** | 两套封装都是每次 API 调用换一次 token（多一次 OAuth 往返）。Demo 无影响，生产需加 | 中 | 0.5 天 |
+| 14 | **两套 PayPal 封装并存** | 部分冗余但**不可替代**：Toolkit 没有 webhook 验签 / webhook 管理 / 测试卡直付三项能力，裸 REST 是唯一实现。真实成本是两套 API 语义漂移的风险由人承担 | 中 | 收敛到统一 client 层 |
+| 15 | **`approval_url` 未落库** | `mandates` 表无该列 → `/approvals`、`/audit` 用硬编码 `checkoutnow?token={order_id}` 重建。**实测 PayPal 自己返回的 payer-action 就是这个格式**，故风险低，但仍是技术债 | 低 | 加一列即可 |
+| 16 | **quantity>1 时金额漂移** | Toolkit 只用 `item_cost` 重算总额，单价先四舍五入到分再乘数量会漂移（$10 ×3 → 实收 $9.99）。当前全部调用点 quantity=1 故精确 | 低 | 按分分配余数 |
+| 17 | **`PAYPAL_MODE=live` 无部署路径** | 该变量目前只用于选 base URL 与 SKIP_VERIFY 护栏，代码里没有真正的 live 部署脚本 | 中 | 0.5 天 |
+
+### 架构评审额外发现并已修复的（2026-10-26）
+
+| 问题 | 影响 | 修复 |
+|---|---|---|
+| **Toolkit `capture_order` 返回包装结构** `{message,status,amount,raw}`，我们直接读顶层 `purchase_units` → **capture_id 恒为 None** | 三层 Mandate 审计链丢失捕获 id；**恰好在 Demo「我已付款·捕获」高光时刻** | 改为从 `raw` 取（兼容未包装结构）；新增 `tests/test_paypal_tools.py` 6 例锁住 |
+| **`items[].item_total` 传了被忽略的值** | Toolkit 内部按 `item_cost×quantity` 重算总额，两边数字打架 | 传值对齐其重算结果；补注释说明 schema 必填 + 实际不被使用 |
 
 **建议下一步优先级**：#3（LLM 稳定性数据）→ #11（录前清场）→ #1 MCP。
 Demo 录制本身 + #11 就够了，其余可留到提交后。

@@ -41,16 +41,33 @@ def _get_tool(name: str):
 
 
 def create_order(item_name: str, amount_usd: float, quantity: int = 1) -> dict:
-    """创建一笔 PayPal 订单，返回包含 id / status / approval_url 的字典。"""
+    """创建一笔 PayPal 订单，返回包含 id / status / approval_url 的字典。
+
+    ⚠️ 关于金额（踩过坑，记在这里）：
+    Toolkit 的入参 schema **强制要求** `items[].item_total`（删掉会报 Field required），
+    但它内部的 `parse_order_details` **只用 `item_cost`**，按
+    `sum(item_cost × quantity)` 重算 subtotal / item_total —— 我们传进去的
+    `item_total` 数值实际不参与计算。
+
+    所以这里传的是**单价** item_cost = 总价 ÷ 数量，并让 item_total 与
+    Toolkit 的重算结果保持一致（unit × quantity），避免两边数字打架。
+
+    副作用：单价先四舍五入到分再乘数量，quantity>1 时实收总额与传入的
+    amount_usd 会有分位漂移（例：总价 $10、数量 3 → item_cost 3.33 → 实收 $9.99）。
+    本项目所有调用点都是 quantity=1（买一件），总额恰好精确。
+    若将来要支持多件，必须改成"按分分配余数"，而不是简单除法。
+    """
     tool = _get_tool("create_order")
+    unit = round(amount_usd / quantity, 2)
+    computed_total = round(unit * quantity, 2)
     raw = tool.invoke(
         {
             "currency_code": "USD",
             "items": [
                 {
                     "name": item_name,
-                    "item_cost": round(amount_usd / quantity, 2),
-                    "item_total": round(amount_usd, 2),
+                    "item_cost": unit,
+                    "item_total": computed_total,  # schema 必填；值对齐 Toolkit 的重算结果
                     "quantity": quantity,
                 }
             ],
@@ -95,17 +112,25 @@ def capture_order(order_id: str) -> dict:
         raise RuntimeError(
             f"PayPal 返回非 JSON 响应（订单 {order_id} 可能尚未 approve）"
         ) from None
+
+    # ⚠️ Toolkit 的 capture_order 返回的是**包装结构**：
+    #   {"message":..., "status":..., "amount":"USD 10.00", "raw": {完整捕获响应}}
+    # 真实的 purchase_units/captures 在 raw 里。直接读顶层会拿到 None
+    # → capture_id 恒为空 → 三层 Mandate 审计链丢失捕获 id。
+    # 这里做兼容：有 raw 就从 raw 取，没有就按未包装的结构读。
+    payload = result.get("raw") if isinstance(result.get("raw"), dict) else result
     captures = (
-        result.get("purchase_units", [{}])[0]
+        payload.get("purchase_units", [{}])[0]
         .get("payments", {})
         .get("captures", [])
     )
     capture_id = captures[0].get("id") if captures else None
     return {
         "order_id": order_id,
-        "status": result.get("status"),
+        "status": payload.get("status") or result.get("status"),
         "capture_id": capture_id,
-        "raw": result,
+        "amount": result.get("amount"),  # 包装层已格式化成 "USD 10.00"
+        "raw": payload,
     }
 
 
