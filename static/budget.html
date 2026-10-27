@@ -3,7 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MandatePay · 预算仪表盘</title>
+  <title>MandatePay · 预算仪表盘 Budget Dashboard</title>
+
+  <!-- AG Studio 前端运行时：npm 包（ESM + 裸依赖），靠 import map 逐级映射。
+       页面先探测本地 /static/vendor（若服务器已挂载），否则回退 jsdelivr CDN。
+       本地安装/校验：python scripts/setup_ag_studio.py [--check] -->
+
   <style>
     * { box-sizing:border-box; }
     body {
@@ -17,8 +22,17 @@
     nav.top a { color:#0070ba; margin-right:16px; text-decoration:none; }
     nav.top a:hover { text-decoration:underline; }
     .card { background:#fff; border:1px solid #dbe3ee; border-radius:10px; padding:18px 20px; margin-bottom:18px; }
-    .card h2 { font-size:16px; margin:0 0 14px; color:#003087; }
-    /* KPI */
+    .card h2 { font-size:16px; margin:0 0 14px; color:#003087; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+    .card h2 .sp { flex:1; }
+    .tag-ag { font-size:11px; font-weight:700; letter-spacing:.04em; background:#e8f0fe; color:#1967d2; border-radius:4px; padding:3px 8px; }
+    .btn { display:inline-block; padding:6px 14px; border-radius:6px; background:#0070ba; color:#fff; text-decoration:none; font-size:13px; border:none; cursor:pointer; }
+    .btn:hover { background:#005c9d; }
+    .btn.gray { background:#eef2f7; color:#003087; }
+    .btn.gray:hover { background:#dde5f0; }
+    #studio { height:810px; width:100%; border:1px solid #eef2f7; border-radius:8px; }
+    #agStatus { font-size:13px; margin-top:10px; min-height:18px; color:#5a6b82; }
+    #agStatus.err { color:#c5221f; }
+    /* ── 原版（Classic）视图，沿用原有样式 ── */
     .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; margin-bottom:18px; }
     .kpi { background:#fff; border:1px solid #dbe3ee; border-radius:10px; padding:16px 18px; }
     .kpi .k { font-size:12px; color:#5a6b82; margin-bottom:6px; }
@@ -26,14 +40,12 @@
     .kpi .d { font-size:12px; color:#8a94a6; margin-top:4px; }
     .kpi.warn .v { color:#c5221f; }
     .kpi.good .v { color:#137333; }
-    /* 进度条 */
     .bar { height:26px; border-radius:13px; background:#eef2f7; overflow:hidden; position:relative; margin:10px 0 6px; }
     .bar > i { display:block; height:100%; background:linear-gradient(90deg,#0070ba,#00a3e0); border-radius:13px; }
     .bar.over > i { background:linear-gradient(90deg,#d93025,#f2994a); }
     .bar .proj { position:absolute; top:0; height:100%; border-right:3px dashed #b36b00; background:rgba(255,193,7,.22); }
     .legend { display:flex; gap:18px; font-size:12px; color:#5a6b82; flex-wrap:wrap; }
     .legend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
-    /* 供应商分布 */
     .vendor-row { display:flex; align-items:center; gap:10px; margin-bottom:9px; font-size:13px; }
     .vendor-row .vn { width:96px; color:#1a2433; font-weight:600; flex-shrink:0; }
     .vendor-row .vb { flex:1; height:20px; background:#eef2f7; border-radius:10px; overflow:hidden; }
@@ -42,94 +54,329 @@
     .warnbox { background:#fce8e6; border-left:3px solid #d93025; padding:12px 16px; border-radius:0 8px 8px 0; font-size:13px; color:#8c1d18; margin-bottom:14px; }
     .okbox { background:#e6f4ea; border-left:3px solid #137333; padding:12px 16px; border-radius:0 8px 8px 0; font-size:13px; color:#0d652d; }
     .empty { color:#8a94a6; font-size:14px; padding:16px 0; }
-    table { width:100%; border-collapse:collapse; font-size:13px; }
-    th,td { text-align:left; padding:9px 8px; border-bottom:1px solid #eef2f7; }
-    th { color:#5a6b82; font-weight:600; background:#fafbfd; }
     .chip { display:inline-block; background:#e8f0fe; color:#1967d2; border-radius:11px; padding:2px 10px; font-size:12px; font-weight:600; margin:2px 4px 2px 0; }
+    .note { background:#fff8e1; border-left:3px solid #f9ab00; padding:10px 14px; font-size:13px; color:#6b5300; margin-bottom:18px; }
   </style>
 </head>
 <body>
-  <nav class="top"><a href="/constraints">· 约束设定</a><a href="/audit">· 审计日志</a><a href="/approvals">· 审批台</a><a href="/">· 支付测试</a></nav>
-  <h1>MandatePay · 预算仪表盘</h1>
-  <div class="sub">Agent 每一笔花钱都在预算之内 —— 剩余多少、会不会超，用数据说话</div>
+  <nav class="top">
+    <a href="/">· 支付测试 Pay</a>
+    <a href="/constraints">· 约束设定 Constraints</a>
+    <a href="/approvals">· 审批台 Approvals</a>
+    <a href="/audit">· 审计 Audit</a>
+    <a href="/budget">· 预算 Budget</a>
+  </nav>
+
+  <h1>MandatePay · 预算仪表盘 <span style="font-size:15px;color:#5a6b82;font-weight:400">Budget Dashboard</span></h1>
+  <div class="sub">Agent 每一笔花钱都在预算之内 —— 剩余多少、会不会超，用数据说话 · Every purchase stays inside the budget</div>
+
+  <div class="note">
+    <b>本页由 AG Studio 渲染 / Powered by AG Studio</b>　数据源是本服务已有的
+    <code>/api/budget/summary</code>（未改动后端）。若 AG Studio 未能加载，页面会<b>自动回退到原版手写视图</b>，也可手动切换。
+    <span style="color:#8a94a6">Rendered by AG Studio from the existing <code>/api/budget/summary</code> endpoint.
+    Falls back to the classic hand-built view if the Studio runtime cannot load.</span>
+  </div>
 
   <div id="alert"></div>
 
-  <div class="kpis" id="kpis"></div>
+  <!-- ══ AG Studio 视图 ══ -->
+  <div class="card" id="agCard">
+    <h2>预算总览 <span style="font-weight:400;color:#5a6b82">Budget Overview</span>
+      <span class="sp"></span>
+      <span class="tag-ag">AG Studio</span>
+      <button class="btn gray" onclick="toggleView()">切换到原版视图 / Classic view</button>
+    </h2>
+    <div id="studio"></div>
+    <div id="agEmpty" hidden style="font-size:13px;color:#8a94a6;margin-top:8px">
+      本月暂无「已到账」支出，因此供应商分布图为空。完成一笔支付（<code>/approvals</code> 点「我已付款·捕获」）后此处会出现分布图。
+      <span style="color:#a9b4c4">No completed payments this month, so the vendor chart is empty. Complete a payment to populate it.</span>
+    </div>
+    <div id="agStatus">正在加载 AG Studio 运行时… / Loading AG Studio runtime…</div>
+  </div>
 
-  <div class="card">
-    <h2>本月预算使用情况</h2>
-    <div class="bar" id="bar"><i id="barUsed" style="width:0%"></i><div class="proj" id="barProj" style="left:0%;width:0%"></div></div>
-    <div class="legend">
-      <span><i style="background:#0070ba"></i>已用（已完成支付）</span>
-      <span><i style="background:rgba(255,193,7,.6);border:1px dashed #b36b00"></i>按当前速率预测的月末用量</span>
+  <!-- ══ 原版视图（自动回退 / 手动切换）══ -->
+  <div id="classicCard" hidden>
+    <div class="card">
+      <h2>预算总览 <span style="font-weight:400;color:#5a6b82">Budget Overview</span>
+        <span class="sp"></span>
+        <span class="tag-ag" style="background:#f0f2f5;color:#5a6b82">原版 Classic</span>
+        <button class="btn gray" onclick="toggleView()">切回 AG Studio / Back to AG Studio</button>
+      </h2>
+      <div class="kpis" id="kpis"></div>
+      <div class="bar" id="bar"><i id="barUsed" style="width:0%"></i><div class="proj" id="barProj" style="left:0%;width:0%"></div></div>
+      <div class="legend">
+        <span><i style="background:#0070ba"></i>已承诺支出 Committed spend</span>
+        <span><i style="background:rgba(255,193,7,.6);border:1px dashed #b36b00"></i>月末预测 Projected</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>按供应商分布 <span style="font-weight:400;color:#5a6b82">Spend by Vendor</span></h2>
+      <div id="vendors"><div class="empty">加载中……</div></div>
+    </div>
+    <div class="card">
+      <h2>约束阈值 <span style="font-weight:400;color:#5a6b82">Thresholds</span></h2>
+      <div id="thresholds"></div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>按供应商分布（本月已完成支付）</h2>
-    <div id="vendors"><div class="empty">加载中……</div></div>
-  </div>
-
-  <div class="card">
-    <h2>约束阈值</h2>
-    <div id="thresholds"></div>
-  </div>
+<script>
+/* ── 视图切换（AG Studio ↔ 原版）── */
+window.currentView = 'ag';
+function toggleView() {
+  window.currentView = window.currentView === 'ag' ? 'classic' : 'ag';
+  document.getElementById('agCard').hidden = window.currentView !== 'ag';
+  document.getElementById('classicCard').hidden = window.currentView !== 'classic';
+}
+</script>
 
 <script>
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const money = n => '$' + Number(n||0).toFixed(2);
+/* ══════════════════════════════════════════════════════════════════════
+   AG Studio 预算仪表盘
+   —— 三条实测出来的关键约定（都是踩过坑的）：
+   1. 必须在 onStudioReady 里 setState：此刻数据引擎才初始化完，
+      否则 schema 为空 → 所有 widget 报 "Field ... does not exist in the schema"。
+   2. 字段 id 必须是「sourceId.fieldId」，且要在 source 的 fields[] 里显式声明。
+   3. 图表 type 没有裸 'bar-chart'，竖向柱状图是 'column-chart-grouped'。
+   —— 另外：import map 必须在任何模块加载前插入，所以这里用经典脚本 + 动态 import()，
+      而不是 <script type="module">（否则 import map 插入会晚于模块加载）。
+   ══════════════════════════════════════════════════════════════════════ */
+(function () {
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const money = (n) => '$' + Number(n || 0).toFixed(2);
+  const statusEl = document.getElementById('agStatus');
 
-async function load(){
-  let d;
-  try { d = await (await fetch('/api/budget/summary')).json(); }
-  catch(e){ document.getElementById('kpis').innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`; return; }
+  /* ── 原版视图渲染（回退 / 手动切换，与原 budget.html 逻辑一致）── */
+  function renderClassic(d) {
+    const budget = d.monthly_budget_usd || 0, spent = d.monthly_spent_usd || 0;
+    const remain = d.remaining_usd || 0, proj = d.projected_month_usd || 0;
+    const ratio = Math.min(1, d.used_ratio || 0), projRatio = Math.min(1, d.projected_ratio || 0);
 
-  const budget = d.monthly_budget_usd||0;
-  const spent = d.monthly_spent_usd||0;
-  const remain = d.remaining_usd||0;
-  const proj = d.projected_month_usd||0;
-  const ratio = Math.min(1, d.used_ratio||0);
-  const projRatio = Math.min(1, d.projected_ratio||0);
+    document.getElementById('kpis').innerHTML = `
+      <div class="kpi"><div class="k">月度预算 Monthly budget</div><div class="v">${money(budget)}</div><div class="d">滚动预算上限 Rolling cap</div></div>
+      <div class="kpi ${d.over_budget ? 'warn' : ''}"><div class="k">已承诺支出 Committed</div><div class="v">${money(spent)}</div><div class="d">下单即计入 On order</div></div>
+      <div class="kpi"><div class="k">其中已到账 Completed</div><div class="v">${money(d.monthly_completed_usd)}</div><div class="d">待支付 ${money(d.monthly_committed_usd)} pending</div></div>
+      <div class="kpi ${remain < 0 ? 'warn' : 'good'}"><div class="k">剩余额度 Remaining</div><div class="v">${money(remain)}</div><div class="d">${remain < 0 ? '已超预算 Over budget' : '可继续授权 Available'}</div></div>
+      <div class="kpi ${d.over_budget ? 'warn' : ''}"><div class="k">月末预测 Projected</div><div class="v">${money(proj)}</div><div class="d">按第 ${d.day_of_month} 天速率外推</div></div>
+      <div class="kpi"><div class="k">今日已承诺 Today</div><div class="v">${money(d.daily_spent_usd)}</div><div class="d">日累计阈值依据 Daily cap</div></div>`;
 
-  document.getElementById('kpis').innerHTML = `
-    <div class="kpi"><div class="k">月度预算</div><div class="v">${money(budget)}</div><div class="d">滚动预算上限</div></div>
-    <div class="kpi ${d.over_budget?'warn':''}"><div class="k">已承诺支出</div><div class="v">${money(spent)}</div><div class="d">下单即计入预算</div></div>
-    <div class="kpi"><div class="k">其中已到账</div><div class="v">${money(d.monthly_completed_usd)}</div><div class="d">待支付 ${money(d.monthly_committed_usd)}</div></div>
-    <div class="kpi ${remain<0?'warn':'good'}"><div class="k">剩余额度</div><div class="v">${money(remain)}</div><div class="d">${remain<0?'已超预算':'可继续授权'}</div></div>
-    <div class="kpi ${d.over_budget?'warn':''}"><div class="k">月末预测</div><div class="v">${money(proj)}</div><div class="d">按第 ${d.day_of_month} 天速率外推</div></div>
-    <div class="kpi"><div class="k">今日已承诺</div><div class="v">${money(d.daily_spent_usd)}</div><div class="d">日累计阈值校验依据</div></div>`;
+    const bar = document.getElementById('bar');
+    bar.className = 'bar' + (d.over_budget ? ' over' : '');
+    document.getElementById('barUsed').style.width = (ratio * 100).toFixed(1) + '%';
+    const bp = document.getElementById('barProj');
+    bp.style.left = (ratio * 100).toFixed(1) + '%';
+    bp.style.width = (Math.max(0, projRatio - ratio) * 100).toFixed(1) + '%';
 
-  const bar = document.getElementById('bar');
-  bar.className = 'bar' + (d.over_budget ? ' over' : '');
-  document.getElementById('barUsed').style.width = (ratio*100).toFixed(1)+'%';
-  const bp = document.getElementById('barProj');
-  bp.style.left = (ratio*100).toFixed(1)+'%';
-  bp.style.width = (Math.max(0, projRatio-ratio)*100).toFixed(1)+'%';
+    const vs = d.by_vendor || [];
+    const max = Math.max(1, ...vs.map(v => v.amount_usd));
+    document.getElementById('vendors').innerHTML = vs.length
+      ? vs.map(v => `<div class="vendor-row">
+          <span class="vn">${esc(v.vendor)}</span>
+          <span class="vb"><i style="width:${(v.amount_usd / max * 100).toFixed(1)}%"></i></span>
+          <span class="va">${money(v.amount_usd)} × ${v.count}</span></div>`).join('')
+      : `<div class="empty">本月还没有已完成的支付。 / No completed payments this month yet.</div>`;
 
-  document.getElementById('alert').innerHTML = d.over_budget
-    ? `<div class="warnbox"><b>⚠️ 预算风险</b>　按当前速率，月末预计花费 ${money(proj)}，将<b>超出</b>月度预算 ${money(budget)}。
-       建议收紧单笔阈值或分批采购。</div>`
-    : `<div class="okbox">✓ 预算健康：已承诺 ${money(spent)} / ${money(budget)}（其中已到账 ${money(d.monthly_completed_usd)}），
-       按当前速率月末预计 ${money(proj)}，仍在预算内。</div>`;
+    const t = d.thresholds || {};
+    document.getElementById('thresholds').innerHTML = `
+      <div class="chip">单笔阈值 Single-tx ${money(t.single_tx_threshold_usd)}</div>
+      <div class="chip">日累计阈值 Daily ${t.daily_threshold_usd ? money(t.daily_threshold_usd) : '不限 none'}</div>
+      <div class="chip">供应商白名单 Vendors：${esc((t.vendor_whitelist || []).join('、') || '不限 none')}</div>
+      <div class="chip">品类白名单 Categories：${esc((t.category_whitelist || []).join('、') || '不限 none')}</div>`;
+  }
 
-  const vs = d.by_vendor || [];
-  const max = Math.max(1, ...vs.map(v => v.amount_usd));
-  document.getElementById('vendors').innerHTML = vs.length
-    ? vs.map(v => `<div class="vendor-row">
-        <span class="vn">${esc(v.vendor)}</span>
-        <span class="vb"><i style="width:${(v.amount_usd/max*100).toFixed(1)}%"></i></span>
-        <span class="va">${money(v.amount_usd)} × ${v.count}</span></div>`).join('')
-    : `<div class="empty">本月还没有已完成的支付。完成一笔后这里会出现分布图。</div>`;
+  function renderAlert(d) {
+    const budget = d.monthly_budget_usd || 0, spent = d.monthly_spent_usd || 0, proj = d.projected_month_usd || 0;
+    document.getElementById('alert').innerHTML = d.over_budget
+      ? `<div class="warnbox"><b>⚠️ 预算风险 Budget risk</b>　按当前速率，月末预计花费 ${money(proj)}，将<b>超出</b>月度预算 ${money(budget)}。
+         建议收紧单笔阈值或分批采购。
+         <span style="color:#8c1d18">Projected month-end spend ${money(proj)} exceeds the ${money(budget)} budget — tighten the single-transaction threshold or buy in batches.</span></div>`
+      : `<div class="okbox">✓ 预算健康 Budget healthy：已承诺 ${money(spent)} / ${money(budget)}（其中已到账 ${money(d.monthly_completed_usd)}），
+         按当前速率月末预计 ${money(proj)}，仍在预算内。
+         <span style="color:#0d652d">Committed ${money(spent)} of ${money(budget)}; projected month-end ${money(proj)} stays inside the budget.</span></div>`;
+  }
 
-  const t = d.thresholds || {};
-  document.getElementById('thresholds').innerHTML = `
-    <div class="chip">单笔阈值 ${money(t.single_tx_threshold_usd)}</div>
-    <div class="chip">日累计阈值 ${t.daily_threshold_usd?money(t.daily_threshold_usd):'不限'}</div>
-    <div class="chip">供应商白名单：${esc((t.vendor_whitelist||[]).join('、')||'不限')}</div>
-    <div class="chip">品类白名单：${esc((t.category_whitelist||[]).join('、')||'不限')}</div>`;
-}
-load();
+  /* ── AG Studio 运行时来源：本地 vendor 优先，否则 jsdelivr CDN ── */
+  const PINS = {
+    'ag-studio': '3.0.0', 'ag-stack': '36.2.0',
+    'ag-grid-enterprise': '36.2.0', 'ag-grid-community': '36.2.0',
+    'ag-charts-enterprise': '14.2.0', 'ag-charts-community': '14.2.0', 'ag-charts-core': '14.2.0',
+  };
+  const CDN = 'https://cdn.jsdelivr.net/npm';
+
+  async function resolveImportMap() {
+    try {
+      const r = await fetch('/static/vendor/ag-studio.mjs', { method: 'HEAD' });
+      if (r.ok) {
+        return {
+          source: 'local',
+          map: Object.fromEntries(Object.keys(PINS).map(p => [p, '/static/vendor/' + p + '.mjs'])),
+        };
+      }
+    } catch (e) { /* 本地未挂载 /static —— 走 CDN */ }
+    return {
+      source: 'cdn',
+      map: Object.fromEntries(Object.entries(PINS)
+        .map(([p, v]) => [p, CDN + '/' + p + '@' + v + '/dist/package/main.esm.min.mjs'])),
+    };
+  }
+
+  function injectImportMap(map) {
+    const s = document.createElement('script');
+    s.type = 'importmap';
+    s.textContent = JSON.stringify({ imports: map });
+    document.head.appendChild(s);
+  }
+
+  /* ── 主流程 ── */
+  (async function main() {
+    let d;
+    try {
+      const r = await fetch('/api/budget/summary');
+      d = await r.json();
+      renderAlert(d);
+      renderClassic(d);
+      document.getElementById('agEmpty').hidden = !!(d.by_vendor && d.by_vendor.length);
+    } catch (e) {
+      statusEl.className = 'err';
+      statusEl.textContent = '加载 /api/budget/summary 失败：' + e;
+      return;
+    }
+
+    /* ── AG Studio 数据源（形状由 /api/budget/summary 派生，不改后端）── */
+    const kpiRow = [{
+      monthlyBudget: d.monthly_budget_usd || 0,
+      monthlySpent: d.monthly_spent_usd || 0,
+      remaining: d.remaining_usd || 0,
+      monthlyCompleted: d.monthly_completed_usd || 0,
+      monthlyCommitted: d.monthly_committed_usd || 0,
+      dailySpent: d.daily_spent_usd || 0,
+      usedRatio: d.used_ratio || 0,
+      projected: d.projected_month_usd || 0,
+      projectedRatio: d.projected_ratio || 0,
+    }];
+    const vendorRows = (d.by_vendor || []).map(v => ({
+      vendor: v.vendor, amountUsd: v.amount_usd || 0, count: v.count || 0,
+    }));
+
+    const data = { sources: [
+      { id: 'kpi', name: 'KPI 预算总览', data: kpiRow, fields: [
+        { id: 'monthlyBudget',   name: '月度预算 Monthly Budget',      format: 'currencyFormat' },
+        { id: 'monthlySpent',    name: '已承诺支出 Committed Spend',   format: 'currencyFormat' },
+        { id: 'remaining',       name: '剩余额度 Remaining',           format: 'currencyFormat' },
+        { id: 'monthlyCompleted',name: '本月已到账 Completed',          format: 'currencyFormat' },
+        { id: 'monthlyCommitted',name: '待支付 Pending',                format: 'currencyFormat' },
+        { id: 'dailySpent',      name: '今日已承诺 Today',              format: 'currencyFormat' },
+        { id: 'usedRatio',       name: '已用占比 Used %',               format: 'percentageFormat' },
+        { id: 'projected',       name: '月末预测 Projected',            format: 'currencyFormat' },
+        { id: 'projectedRatio',  name: '预测占比 Projected %',         format: 'percentageFormat' },
+      ]},
+      { id: 'vendors', name: '供应商 Vendors', data: vendorRows, fields: [
+        { id: 'vendor',    name: '供应商 Vendor',   format: 'textFormat' },
+        { id: 'amountUsd', name: '金额 Amount',     format: 'currencyFormat' },
+        { id: 'count',     name: '笔数 Count',      format: 'integerFormat' },
+      ]},
+    ]};
+
+    /* ── 预定义 dashboard（代码注入，不靠用户进 edit 模式手搭）── */
+    const at = (x, y, xs, ys) => ({ xTrack: x, yTrack: y, xSpan: xs, ySpan: ys });
+    const title = (text) => ({ title: { enabled: true, text } });
+    const sum = (id) => ({ id, aggregation: 'sum' });
+    const typo = (color) => ({ fontFamily: '"Microsoft YaHei", system-ui, sans-serif', fontSize: 21, fontWeight: 'bold', fontStyle: 'normal', color: color || '#003087' });
+    const tTypo = (color) => ({ fontFamily: '"Microsoft YaHei", system-ui, sans-serif', fontSize: 13, fontWeight: 'bold', fontStyle: 'normal', color: color || '#003087' });
+    const kpiTile = (text, fieldId, color) => ({
+      type: 'value',
+      dataMapping: { value: [sum(fieldId)] },
+      format: {
+        // 注意：标题的 typography 挂在 format.title 下（不是 format.style.title），
+        // 放错位置标题字号不生效，双语标题会被截断成「月度预算 Monthly...」
+        title: { enabled: true, text, typography: tTypo('#003087') },
+        // caption 设为 disabled：text:'' 不会清空，会回落到数据源名（显示成 "KPI"）
+        caption: { enabled: false },
+        style: { typography: typo(color) },
+      },
+    });
+    const gauge = (text, fieldId) => ({
+      type: 'linear-gauge',
+      dataMapping: { value: [{ id: fieldId }] },
+      format: {
+        ...title(text),
+        style: { scaleLabel: { min: 0, max: 1 }, direction: 'horizontal', thickness: 22 },
+      },
+    });
+
+    const report = {
+      pages: [{
+        id: 'budget',
+        widgets: {
+          'kpi-budget': kpiTile('月度预算 Monthly Budget', 'kpi.monthlyBudget'),
+          'kpi-spent':  kpiTile('本月已用 Committed Spend', 'kpi.monthlySpent'),
+          'kpi-remain': kpiTile('剩余额度 Remaining', 'kpi.remaining',
+                                (d.remaining_usd || 0) < 0 ? '#c5221f' : '#003087'),
+          'kpi-done':   kpiTile('本月已到账 Completed', 'kpi.monthlyCompleted'),
+          'gauge-used':  gauge('已用占比 Used %', 'kpi.usedRatio'),
+          'gauge-proj': gauge('预测占比 Projected %', 'kpi.projectedRatio'),
+          'by-vendor': {
+            type: 'column-chart-grouped',
+            dataMapping: {
+              categoryKey: [{ id: 'vendors.vendor' }],
+              valueKey: [sum('vendors.amountUsd')],
+            },
+            format: { ...title('按供应商支出 Spend by Vendor') },
+          },
+        },
+        widgetLayout: {
+          'kpi-budget':   at(0,  0, 6, 2),
+          'kpi-spent':    at(6,  0, 6, 2),
+          'kpi-remain':   at(12, 0, 6, 2),
+          'kpi-done':     at(18, 0, 6, 2),
+          'gauge-used':   at(0,  2, 12, 2),
+          'gauge-proj':  at(12, 2, 12, 2),
+          'by-vendor':    at(0,  4, 24, 5),
+        },
+        // 显式指定行高/列数：默认行高下 KPI 卡片放不下「标题+数值」，数值会被裁掉
+        layout: { rowHeight: 88, columns: 24 },
+      }],
+      selectedPageId: 'budget',
+    };
+
+    /* ── 启动 AG Studio ── */
+    try {
+      statusEl.textContent = '正在加载 AG Studio 运行时… / Loading AG Studio runtime…';
+      const { source, map } = await resolveImportMap();
+      injectImportMap(map);
+      const { createStudio } = await import('ag-studio');
+
+      let applied = false, api = null;
+      const apply = () => {
+        if (applied || !api) return; applied = true;
+        try {
+          api.setState(report);
+          statusEl.className = '';
+          statusEl.textContent = '✅ AG Studio 已渲染预算总览（运行时：' +
+            (source === 'local' ? '本地 vendor local' : 'jsdelivr CDN') +
+            '）/ AG Studio rendered the budget overview.';
+        } catch (e) {
+          statusEl.className = 'err';
+          statusEl.textContent = 'setState 失败：' + e;
+        }
+      };
+
+      api = createStudio(document.getElementById('studio'), {
+        data,
+        mode: 'view',
+        // view 模式下不显示右侧 Filters 面板（我们没有 filter widget，它只会显示 No filters available）
+        panels: { view: { left: [], right: [] } },
+        onApiReady: () => { statusEl.textContent = 'AG Studio API 就绪，等待数据引擎… / API ready, waiting for data engine…'; },
+        onStudioReady: () => apply(),
+      });
+    } catch (e) {
+      statusEl.className = 'err';
+      statusEl.textContent = '❌ AG Studio 运行时加载失败，已自动切回原版视图：' + e;
+      window.currentView = 'classic';
+      document.getElementById('agCard').hidden = true;
+      document.getElementById('classicCard').hidden = false;
+    }
+  })();
+})();
 </script>
 </body>
 </html>

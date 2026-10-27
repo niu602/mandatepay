@@ -33,3 +33,8 @@ Thumbs.db
 
 # ── 本地开发辅助数据（非交付物）─────────────────────
 .workbuddy/
+
+# ── AG Studio 前端运行时（npm 商业包，不入库）────────────
+# 由 `python scripts/setup_ag_studio.py` 安装到 static/vendor/。
+# 页面默认走 jsdelivr CDN；本地 vendor 仅在服务器挂载 /static 时生效。
+static/vendor/
