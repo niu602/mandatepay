@@ -1,10 +1,22 @@
 # -*- coding: utf-8 -*-
-"""验证 LLM 路径是否真正生效（而非静默降级到规则解析）。"""
-import os
+"""验证 LLM 路径是否真正生效（而非静默降级到规则解析）。
 
-os.environ["LLM_API_KEY"] = "***REMOVED***"
-os.environ["LLM_BASE_URL"] = "https://tokenhub.tencentmaas.com/v1"
-os.environ["LLM_MODEL"] = "glm-5.3-flash"
+配置来源：项目根目录的 .env（LLM_API_KEY / LLM_BASE_URL / LLM_MODEL）。
+本文件不硬编码任何密钥，缺失时直接报错退出。
+"""
+import os
+import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# 从项目根目录 .env 读取（路径以本文件为准，不依赖当前工作目录）
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+if not os.getenv("LLM_API_KEY"):
+    sys.exit("❌ 未配置 LLM_API_KEY —— 请配置 .env 中的 LLM_API_KEY 后重试。")
+if not os.getenv("LLM_BASE_URL") or not os.getenv("LLM_MODEL"):
+    sys.exit("❌ 未配置 LLM_BASE_URL / LLM_MODEL —— 请配置 .env 后重试。")
 
 from agent.intent import parse
 
