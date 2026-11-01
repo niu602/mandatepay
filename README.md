@@ -320,7 +320,7 @@ REST 路径已验证，绝不替换；两条并存向评委展示"PayPal 集成�
 - [x] 前端约束设定页 `/constraints` + 审计页 + 人工确认入口
 - [x] SQLite → PostgreSQL 切换（含迁移脚本，D1-D5 回归通过）
 - [x] Webhook 签名校验 + 公网隧道（4 事件订阅完成）
-- [x] git init + .gitignore + MIT LICENSE（署名 2026 牛子森）
+- [x] git init + .gitignore + MIT LICENSE（署名 2026 Niu Zisen）
 - [ ] MCP Server 集成（P1 冲奖）
 - [ ] Demo 视频 ≤3 分钟（**录屏剪辑，不要现场直播**）
 - [ ] 11/11 提前提交 Devpost
