@@ -183,24 +183,44 @@ LLM_MODEL=glm-4.7-flash
   "429 后返回残缺响应"（HTTP 200 但无 tool_calls，实测过载高峰期存在），
   同样归因端点。**真正的模型无 tool_call 仍直接算失败，不给重跑机会。**
 
-### 5.2 关于 thinking 的取舍
+### 5.2 关于 thinking 的取舍（实测对比）
 
-| 项 | disabled（采用） | enabled |
-|---|---|---|
-| 判定正确率 | 60/60 | 见下 |
-| 判定稳定性 | 20/20 三次一致 | 见下 |
-| token 消耗 | 低（主Agent 实测 completion 13→2） | 高 |
-| 延迟 | 低 | 高 |
+**两组都跑完了同一套 20 句断言集**：
 
-**结论：采用 `LLM_THINKING=disabled`**，理由：
-① 判定质量无损失（三场景 + 边界 + 推理场景全部正确且稳定）；
-② 免费档 token 消耗直接降一半以上，延迟更低 —— 而本项目在过载高峰期
-本来就受端点容量限制，省 token 等于省重试；
-③ 关闭思维链后模型输出更"直接"，function calling 触发更稳。
+| 组 | 命令 | 判定正确率 | 稳定性 | 降级 | 429 重试 | 备注 |
+|---|---|---|---|---|---|---|
+| **disabled** | `--repeat 3 --thinking disabled` | **60/60** | **20/20 三次一致** | 0/60 | 43 次 | ✅ 采用 |
+| enabled | `--repeat 1 --thinking enabled` | **20/20** | 一致 | 0/20 | 31 次 | 对照组 |
+
+**判定质量上两者无差异** —— thinking 开关不影响 function calling 的正确性。
+
+再测 token 与延迟（同一句 `订阅 Notion Pro，10 美元每月`，`max_tokens=200`）：
+
+| 模式 | reasoning_tokens | completion | total | 429 重试耗时 |
+|---|---|---|---|---|
+| **disabled** | **0** | 142 | 329 | 99.7s（9 次尝试） |
+| enabled | **83** | 124 | 311 | 64.0s（6 次尝试） |
+
+> ⚠️ **一个反直觉的发现**：关闭思维链后 `reasoning_tokens` 确实归零，
+> 但**总 completion 并没有下降**（142 vs 124）—— 模型把省下的思维链预算
+> 补到了回答内容里（function calling 场景下 `content` 也会输出解释文本）。
+>
+> 工单情报里"completion 从 13→2"是在**纯对话**场景测的，
+> **在 function calling 场景下这个收益基本不存在**。
+> 这也是为什么必须用同一套 20 句测试集实测对比，而不是照搬单场景数据。
+
+**结论：仍采用 `LLM_THINKING=disabled`**，但理由要如实修正 —— 不是"省 token"，
+而是：
+① **判定质量无差异**（两组都全对），关闭后行为更可预测（`reasoning_tokens=0`，
+   不依赖模型的思维链长度来触发 tool_call）；
+② 在过载高峰期，**少一次 token 生成 = 少一次触发 429 的机会**；
+③ 对**非 GLM 端点兼容性更好** —— 很多 OpenAI 兼容端点不认 `thinking` 字段会报 400，
+   默认关闭意味着换端点时不用改代码。
 
 实现方式：`ChatOpenAI(extra_body={"thinking": {"type": "disabled"}})` ——
-OpenAI SDK 的标准"附加请求体"通道。**做成开关而非硬编码**，
-因为非 GLM 端点不认这个字段会报 400（换端点时必须能关掉）。
+OpenAI SDK 的标准"附加请求体"通道（**注意不能直接放顶层参数**，
+`chat.completions.create(thinking=...)` 会报 `unexpected keyword argument`）。
+**做成开关而非硬编码**，因为非 GLM 端点不认这个字段会报 400（换端点时必须能关掉）。
 
 ---
 

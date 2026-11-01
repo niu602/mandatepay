@@ -197,9 +197,11 @@ LLM_MODEL=glm-4.7-flash              # 示例：Z.ai 的模型名
 
 可选配置：
 
-- `LLM_THINKING=disabled` —— 关闭 GLM 系列的思维链（token 更省、延迟更低）。
+- `LLM_THINKING=disabled` —— 关闭 GLM 系列的思维链（`reasoning_tokens` 归零）。
   通过 OpenAI SDK 的 `extra_body` 透传 `"thinking": {"type": "disabled"}`，
-  **只有支持该字段的端点才设**，否则会报 400。
+  **只有支持该字段的端点才设**，否则会报 400（默认不设，换任何端点都不炸）。
+  实测：thinking 开关**不影响判定质量**（两组均 20/20 全对），
+  但 function calling 场景下总 token 差别不大（详见 `W05_ZAI_MIGRATION.md` §5.2）。
 - `LLM_TIMEOUT`（默认 60 秒）—— 单次请求超时。
 - `LLM_RETRY_DELAY`（默认 8 秒）/ `LLM_RETRY_MAX`（默认 6 次）—— 过载退避重试。
 - `LLM_MIN_INTERVAL`（默认 4 秒）—— 两次调用之间的最小间隔（客户端限速）。

@@ -22,6 +22,23 @@
 
 三场景覆盖：AUTO_APPROVE 10 句、REQUIRE_HUMAN 5 句、REJECT 5 句。
 
+### 对照组：thinking 开启（`--thinking enabled --repeat 1`）
+
+同一套 20 句断言集，thinking 开启时 **20/20 判定正确、稳定性一致、降级 0/20**
+—— **thinking 开关不影响 function calling 的判定质量**。
+
+token 实测（同一句，`max_tokens=200`）：
+
+| 模式 | reasoning_tokens | completion | total |
+|---|---|---|---|
+| disabled | **0** | 142 | 329 |
+| enabled | **83** | 124 | 311 |
+
+> 反直觉发现：关闭思维链后 `reasoning_tokens` 归零，但**总 completion 反而略高**
+> （142 vs 124）—— 模型把省下的预算补到了回答内容里。
+> 工单情报里 "13→2" 是纯对话场景的数据，**function calling 场景下这个收益不存在**。
+> 详见 [W05_ZAI_MIGRATION.md](W05_ZAI_MIGRATION.md) §5.2。
+
 ---
 
 ## 二、验证表格
