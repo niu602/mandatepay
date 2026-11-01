@@ -1,4 +1,6 @@
 fastapi==0.115.*
+# uvicorn[standard] 含 httptools / uvloop / watchfiles —— 运行时更快（C 加速），
+# 但构建期要装预编译 wheel。若 Render 构建太慢，第一个精简动作就是去掉 [standard]。
 uvicorn[standard]
 requests
 python-dotenv
@@ -9,11 +11,13 @@ langchain-core>=1.6,<2
 langchain>=1.4,<2
 
 # Agent 支付流：PayPal 官方 Agent Toolkit（orders/products/subscriptionPlans）
+# 传递依赖很轻：仅 httpx / pydantic / requests（已实测，不是冷启动瓶颈）
 paypal-agent-toolkit>=1.1
 
-# 意图解析：DeepSeek 兼容 OpenAI 协议（不配 Key 时自动降级规则解析）
+# 意图解析：任意 OpenAI 兼容端点（当前用 Z.ai glm-4.7-flash）
+# 不配 Key 时自动降级规则解析
 langchain-openai>=1.7,<2
 
 # 持久化：默认 SQLite（内置，无需额外依赖）
-# 设置 DATABASE_URL 切到 PostgreSQL 时才需要下面这个驱动
+# 设置 DATABASE_URL 切到 PostgreSQL（本地 PG / Neon）时才需要下面这个驱动
 psycopg[binary]>=3.3,<4

@@ -6,10 +6,12 @@
 3. 审计日志：/api/mandates
 """
 import json
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import config, paypal_client
@@ -17,7 +19,40 @@ from . import config, paypal_client
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 
-app = FastAPI(title="MandatePay — 带约束的 AI 支付执行层")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """启动时确保数据库表就绪。
+
+    部署到 Render/Neon 后，数据库是**空库**（Neon 免费项目只有库没有表），
+    而建表逻辑在 `store._Conn.__enter__` 里（连接时执行幂等 schema + 在线迁移）。
+    这里显式触发一次，避免第一个请求才建表（冷启动首请求超时）。
+
+    失败不阻断启动：表由后续请求的连接逻辑兜底建，
+    只是在日志里明确暴露出来（而不是让首个用户请求报错）。
+    """
+    try:
+        # store 在项目根的 agent/ 包里（不在 app/ 包内），要用绝对导入
+        from agent import store
+
+        with store._Conn():
+            pass
+        print("[startup] 数据库 schema 就绪:", store.backend_name())
+    except Exception as exc:
+        print(f"[startup] ⚠️ 建表失败（不阻断启动）: {exc}")
+    yield
+
+
+app = FastAPI(title="MandatePay — 带约束的 AI 支付执行层", lifespan=lifespan)
+
+# 挂载 /static —— 两个用途：
+# 1. /budget 页面的 AG Studio 运行时探测 `/static/vendor/ag-studio.mjs`，
+#    命中就用本地 ESM（离线可用、免 CDN 往返）；未命中才回退 jsdelivr。
+# 2. 静态资源直出（部署到 Render 后前端不再依赖本地文件系统路径以外的东西）。
+# 注意：static/vendor/ 已 gitignore（npm 商业包不入库），部署时由
+# scripts/setup_ag_studio.py 在构建阶段安装；未安装则自动回退 CDN，功能不受影响。
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ──────────────────────────────────────────────────────

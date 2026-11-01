@@ -1,0 +1,49 @@
+# Render 部署配置（免费 Web Service）
+#
+# 平台选择理由（见 W06_DEPLOY.md）：
+# - 不用 Render 免费 PostgreSQL：创建 30 天后删除 —— 11 月建库正好在评审期
+#   （12-01 ~ 12-15）内失效（R-09）
+# - 不用 Supabase 免费层：7 天无活动即暂停，需手动恢复
+# - 用 Neon 免费项目：数据库不会自动删除（只休眠），且提供连接串
+#
+# 部署步骤：
+# 1. Neon 控制台建免费项目 → 取连接串 → 填到 Render 的 DATABASE_URL
+# 2. 把下面所有 sync: false 的环境变量在 Render Dashboard 填好
+# 3. Render Dashboard → New → Blueprint → 选本仓库 → Apply
+#
+# 注意：本文件不含任何密钥，全部通过 Dashboard 手动填入（sync: false）。
+
+services:
+  - type: web
+    name: mandatepay
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      # ── 数据库（Neon 免费项目）──────────────────────────
+      - key: DATABASE_URL
+        sync: false
+      # ── PayPal 沙箱 ─────────────────────────────────────
+      - key: PAYPAL_MODE
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      # ── LLM（任意 OpenAI 兼容端点）────────────────────────
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_BASE_URL
+        value: https://api.z.ai/api/paas/v4
+      - key: LLM_MODEL
+        value: glm-4.7-flash
+      - key: LLM_THINKING
+        value: disabled
