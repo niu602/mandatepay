@@ -16,7 +16,7 @@
 | Agent | LangGraph（七节点状态机，含 2 个 AI 决策节点） | ✅ 已跑通 |
 | 后端 | FastAPI + Python | ✅ 已跑通 |
 | 支付 | PayPal Orders v2 REST（Web 流）+ Agent Toolkit（Agent 流） | ✅ **两条均已跑通** |
-| 模型 | glm-5.3-flash（腾讯 MaaS，OpenAI 兼容） | ✅ **已实测**：function calling 6/6 + 决策解释/消费洞察实时产出 |
+| 模型 | **任意 OpenAI 兼容端点**（此处用 Z.ai `glm-4.7-flash`，海外可注册） | ✅ **已实测**：function calling 20 句 × 3 次全对 + 决策解释/消费洞察实时产出 |
 | 数据库 | **PostgreSQL 16**（`DATABASE_URL` 驱动，留空即回退 SQLite） | ✅ 已切换并回归 |
 | 前端 | `static/` 原生 HTML（支付页 + 审计页） | ✅ 已可用 |
 | MCP | @paypal/mcp | ⏳ P1 可选，冲奖用 |
@@ -46,13 +46,17 @@ paypal-ai-hackathon/
 ├── scripts/
 │   ├── init_db.py                # 幂等建表（按后端自动选 schema）
 │   ├── migrate_sqlite_to_pg.py   # SQLite → PostgreSQL 数据迁移
-│   └── setup_webhook.py          # REST API 管理 Webhook 订阅
+│   ├── setup_webhook.py          # REST API 管理 Webhook 订阅
+│   ├── verify_llm_zai.py         # 意图解析验证（20 句断言集 + 降级统计 + 断点续跑）
+│   └── scan_secrets.py           # 宽口径密钥扫描（工作树 + 全历史）
 ├── static/
 │   ├── index.html         # PayPal JS SDK 支付按钮页（Web 流）
 │   └── audit.html         # 三层 Mandate 审计页 + 人工确认入口
 ├── mandatepay.db          # SQLite 备份（已 gitignore）
 ├── WEEK1_REVIEW.md        # 第 1 周复盘（D1-D7）
-├── LICENSE                # MIT（年份/作者为占位符，需替换）
+├── WEEK2_REVIEW.md        # 第 2 周复盘（D8-D14）
+├── W05_ZAI_MIGRATION.md   # Z.ai 接入 + 意图解析重测（含 429 应对）
+├── LICENSE                # MIT（Copyright 2026 Niu Zisen）
 ├── .env / .env.example
 └── README.md
 ```
@@ -169,6 +173,75 @@ python -m uvicorn app.main:app --port 8888
 - `http://127.0.0.1:8888/` —— PayPal 支付测试页（Web 流）
 - `http://127.0.0.1:8888/constraints` —— 约束设定页（自然语言设约束 + 结构化规则 + 消费洞察/决策解释演示）
 - `http://127.0.0.1:8888/audit` —— 三层 Mandate 审计页 + 人工确认入口
+
+### LLM 配置：任何 OpenAI 兼容端点可用
+
+意图解析走标准 **OpenAI 协议**，因此**任何 OpenAI 兼容端点都能直接接入**，
+只需改 `.env` 三个变量，业务代码零改动：
+
+```bash
+# .env
+LLM_API_KEY=sk-xxxxxxxxxxxx          # 占位符：请填你自己的 key，勿提交 .env
+LLM_BASE_URL=https://api.z.ai/api/paas/v4   # 示例：Z.ai（海外可注册，免费档可用）
+LLM_MODEL=glm-4.7-flash              # 示例：Z.ai 的模型名
+```
+
+换成其他端点只改 `LLM_BASE_URL` / `LLM_MODEL` 即可，例如：
+
+| 端点 | `LLM_BASE_URL` | `LLM_MODEL` |
+|---|---|---|
+| Z.ai（示例，海外可注册） | `https://api.z.ai/api/paas/v4` | `glm-4.7-flash` |
+| 腾讯 MaaS | `https://tokenhub.tencentmaas.com/v1` | `glm-5.3-flash` |
+| DeepSeek | `https://api.deepseek.com` | `deepseek-chat` |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` |
+
+可选配置：
+
+- `LLM_THINKING=disabled` —— 关闭 GLM 系列的思维链（token 更省、延迟更低）。
+  通过 OpenAI SDK 的 `extra_body` 透传 `"thinking": {"type": "disabled"}`，
+  **只有支持该字段的端点才设**，否则会报 400。
+- `LLM_TIMEOUT`（默认 60 秒）—— 单次请求超时。
+- `LLM_RETRY_DELAY`（默认 8 秒）/ `LLM_RETRY_MAX`（默认 6 次）—— 过载退避重试。
+- `LLM_MIN_INTERVAL`（默认 4 秒）—— 两次调用之间的最小间隔（客户端限速）。
+
+> **不配也能跑**：LLM 调用失败会自动降级到规则解析，demo 不受影响。
+> 但降级是**可观测的** —— 见下方「降级统计」，避免"AI 路径没生效却显示验证通过"。
+
+### 免费档的 429 是常态（真实工程问题，已处理）
+
+免费额度端点（如 Z.ai）会随机返回 `429`，错误码有两种：
+`1305`（服务过载）与 `1302`（请求速率超限）。
+实测过载高峰时成功率仅约 20%——**这不是代码 bug，是端点侧的容量问题**。
+
+处理方式（三层）：
+
+1. **客户端限速**（`LLM_MIN_INTERVAL`）—— 主动把请求摊开，比被动重试有效；
+   密集重试会持续触发 `1302`，把退避变成"越退越堵"。
+2. **指数退避 + 随机抖动** —— 第 n 次重试等 `8 × 2^(n-1)` 秒（上限 45 秒），
+   叠加 ±30% 抖动，避免所有并发重试在同一秒打回去。
+3. **降级可观测** —— `agent/llm_intent.py` 维护 `_STATS` 计数器
+   （`calls` / `success` / `rate_limited` / `retries` / `degraded` / `no_tool_call`），
+   验证脚本据此报告降级次数，**防止"AI 路径没生效但验证显示通过"的假绿**。
+
+```python
+from agent.llm_intent import llm_stats
+print(llm_stats())   # {'calls': 60, 'success': 58, 'rate_limited': 9, 'retries': 9, ...}
+```
+
+### 意图解析验证（20 句断言集）
+
+```bash
+python scripts/verify_llm_zai.py --repeat 3 --thinking disabled --md LLM_INTENT_VERIFICATION.md
+```
+
+- 20 句覆盖 AUTO_APPROVE / REQUIRE_HUMAN / REJECT 三场景 + 阈值边界 + 推理（查目录比价 / 品类消歧）
+- **期望结果人工枚举并固化在脚本的 `CASES` 表**（非模型自评、非运行后回填）
+- 判定直接复用生产引擎 `agent/constraints.py` 的 `evaluate()`，避免"测试逻辑与生产逻辑不一致"
+- 固定约束 + 固定花费快照（不读 DB）→ 结果可复现
+- 逐句落盘 `.verify_state.json`，免费档过载时可断点续跑
+
+最新结果：**60/60 正确、20/20 三次一致、降级 0 次** →
+[LLM_INTENT_VERIFICATION.md](LLM_INTENT_VERIFICATION.md)
 
 ## API
 
@@ -315,7 +388,7 @@ REST 路径已验证，绝不替换；两条并存向评委展示"PayPal 集成�
 - [x] AI 决策解释（explain_node）+ 消费洞察（insight_node），模板兜底保底
 - [x] 三层 Mandate：一笔交易落 **3 条独立记录**（Intent/Cart/Payment，`trace_id` 串联）
 - [x] Agent 流接真实 PayPal Agent Toolkit
-- [x] LLM function calling 意图解析（glm-5.3-flash 实测 6/6 正确 + 6/6 稳定）
+- [x] LLM function calling 意图解析（**Z.ai `glm-4.7-flash` 实测 20 句 × 3 次 = 60/60 正确 + 20/20 稳定 + 降级 0**，见 [LLM_INTENT_VERIFICATION.md](LLM_INTENT_VERIFICATION.md)）
 - [x] 供应商目录 / SaaS 订阅计划（Toolkit products / subscriptionPlans，Agent 侧可查）
 - [x] 前端约束设定页 `/constraints` + 审计页 + 人工确认入口
 - [x] SQLite → PostgreSQL 切换（含迁移脚本，D1-D5 回归通过）

@@ -11,19 +11,25 @@
 """
 from __future__ import annotations
 
-from .llm_intent import _client
+from .llm_intent import _client, _invoke_with_retry
 from .models import Constraint, PurchaseRequest
 
 
 def _llm_text(system: str, user: str) -> str | None:
-    """调一次 LLM 拿纯文本；任何异常返回 None，由调用方走兜底。"""
+    """调一次 LLM 拿纯文本；任何异常返回 None，由调用方走兜底。
+
+    走 `_invoke_with_retry`：Z.ai 免费档 429 是常态，不退避重试会让
+    洞察/解释频繁掉到模板兜底，Demo 看起来像"AI 没参与"。
+    """
     client = _client()
     if client is None:
         return None
     try:
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        resp = client.invoke([SystemMessage(content=system), HumanMessage(content=user)])
+        resp = _invoke_with_retry(
+            client, [SystemMessage(content=system), HumanMessage(content=user)]
+        )
         text = (getattr(resp, "content", "") or "").strip()
         return text or None
     except Exception:

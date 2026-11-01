@@ -101,7 +101,7 @@ parse → validate → insight → explain → approve → pay → verify
 |---|---|---|---|---|
 | 1 | **MCP Server 未集成** | 计划内后移；Devpost "技术深度"叙事少一块 | 中 | 1 天 |
 | 2 | **多 Agent 拆分未做** | 目前是单图七节点状态机；多 Agent 协作叙事缺失 | 中 | 2 天 |
-| 3 | **LLM 判定稳定性未压测** | 约束引擎有 650 次判定数据，但 LLM 解析路径只测了 6 句 × 3 次 | 高 | 0.5 天 |
+| 3 | ~~**LLM 判定稳定性未压测**~~ | ✅ **已补**（W-05）：20 句 × 3 次 = 60 次运行，判定正确率 60/60、稳定性 20/20（三次完全一致）、降级 0 次。断言集在 `scripts/verify_llm_zai.py`（期望结果人工枚举固化），报告见 `LLM_INTENT_VERIFICATION.md`。原 6 句样本量太小的问题一并解决 | ~~ | ~~ |
 | 4 | **insight/explain 未做缓存** | 每笔采购 3 次 LLM 调用，Demo 录制有等待感 | 中 | 0.5 天 |
 | 5 | **支付成功金额未回流到 mandate 审计** | `amount_usd` 来自请求值，若实际扣款金额不同（如手续费）审计链不反映 | 低 | 0.5 天 |
 | 6 | **`/api/agent/requests`（结构化入口）不跑 insight/explain** | 绕过状态机，缺 AI 输出；前端若改用它就没了 AI 感 | 中 | 0.5 天 |

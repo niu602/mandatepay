@@ -42,3 +42,6 @@ Thumbs.db
 # 由 `python scripts/setup_ag_studio.py` 安装到 static/vendor/。
 # 页面默认走 jsdelivr CDN；本地 vendor 仅在服务器挂载 /static 时生效。
 static/vendor/
+
+# ── 验证脚本的断点续跑中间状态（非交付物）──────────────
+.verify_state.json
