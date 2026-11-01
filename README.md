@@ -245,6 +245,35 @@ python scripts/verify_llm_zai.py --repeat 3 --thinking disabled --md LLM_INTENT_
 最新结果：**60/60 正确、20/20 三次一致、降级 0 次** →
 [LLM_INTENT_VERIFICATION.md](LLM_INTENT_VERIFICATION.md)
 
+## 部署（Neon + Render，全免费）
+
+```bash
+# 1. Neon：console.neon.tech 建免费项目（Region 选 AWS US West (Oregon)），复制连接串
+# 2. Render：render.com → New → Blueprint → 选本仓库 → 填环境变量 → Apply
+# 3. 部署后初始化（建表 + 种子数据 + 清场）
+bash scripts/deploy_init.sh
+```
+
+| 组件 | 选型 | 为什么 |
+|---|---|---|
+| 数据库 | **Neon** 免费 PostgreSQL | 只休眠不删库，评审期（12-01~12-15）安全 |
+| 应用 | **Render** 免费 Web Service | 自动从 GitHub 构建，`render.yaml` 声明式配置 |
+
+> 不用 Render 免费 PostgreSQL（**创建 30 天后删除**，正落在评审期内）；
+> 不用 Supabase 免费层（**7 天无活动即暂停**，需手动恢复）。
+
+必填环境变量（`render.yaml` 里其余已配好）：
+
+```bash
+DATABASE_URL=postgresql://user:password@ep-xxx.us-west-2.aws.neon.tech/mandatepay?sslmode=require
+PAYPAL_CLIENT_ID=...        # PayPal 沙箱
+PAYPAL_CLIENT_SECRET=...
+PAYPAL_WEBHOOK_ID=...
+LLM_API_KEY=...             # 任意 OpenAI 兼容端点
+```
+
+细节、验收清单、冷启动记录、已知限制见 **[W06_DEPLOY.md](W06_DEPLOY.md)**。
+
 ## API
 
 | 方法 | 路径 | 说明 |
