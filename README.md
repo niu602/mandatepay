@@ -56,6 +56,7 @@ paypal-ai-hackathon/
 ├── mandatepay.db          # SQLite 备份（已 gitignore）
 ├── Dockerfile              # 容器镜像（$PORT 兼容各平台）
 ├── Procfile                # 原生模式启动命令（Railway / Render 自动识别）
+├── startup.sh              # Azure App Service 启动命令（app.main:app + 0.0.0.0:8000）
 ├── render.yaml             # Render Blueprint（备用 —— 若日后绑卡可直接用）
 ├── .python-version         # 锁定 3.11.9（平台默认会是 3.14，太新）
 ├── WEEK1_REVIEW.md        # 第 1 周复盘（D1-D7）
@@ -252,12 +253,15 @@ python scripts/verify_llm_zai.py --repeat 3 --thinking disabled --md LLM_INTENT_
 最新结果：**60/60 正确、20/20 三次一致、降级 0 次** →
 [LLM_INTENT_VERIFICATION.md](LLM_INTENT_VERIFICATION.md)
 
-## 部署（Neon + Railway，全免费）
+## 部署（Neon + Azure App Service，全免费）
 
 ```bash
 # 1. Neon：console.neon.tech 建免费项目（Region 选 AWS US West (Oregon)），复制连接串
-# 2. Railway：railway.app → GitHub 登录 → New Project → Deploy from GitHub repo
-#    → 选本仓库 → Variables 粘贴 deploy.env → Settings→Networking 生成域名
+# 2. Azure：azure.microsoft.com/free/students 用学校邮箱开通（免卡）
+#    → Create App Service（Runtime=Python 3.11 / Plan=Free F1）
+#    → Deployment Center 选 GitHub（仓库 niu602/mandatepay，分支 master）
+#    → Startup Command 填 `bash startup.sh`
+#    → Environment variables 填 9 个变量 → Restart
 # 3. 部署后初始化（建表 + 种子数据 + 清场）
 DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 ```
@@ -265,10 +269,10 @@ DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 | 组件 | 选型 | 为什么 |
 |---|---|---|
 | 数据库 | **Neon** 免费 PostgreSQL | 只休眠不删库，评审期（12-01~12-15）安全 |
-| 应用 | **Railway** 免费 Web Service | 官方定价页明确 Free 档 **"No credit card required"**，$0/月含 $1 额度 |
+| 应用 | **Azure App Service F1**（Azure for Students） | **官方明确学生版无需信用卡**；F1 always-free（1GB 内存 / 60 CPU 分钟每天）；额度**按天重置，评审期任何一天都不会失效** |
 
 > 不用 Render：2026 年对**新注册账号**普遍强制 Stripe 卡片验证（实测最后一步仍被拦）。
-> 不用 Render 免费 PG（**创建 30 天后删除**，正落在评审期内）；
+> 不用 Railway（注册已关闭）；不用 Render 免费 PG（**创建 30 天后删除**，正落在评审期内）；
 > 不用 Supabase 免费层（**7 天无活动即暂停**）；
 > 不用 Zeabur（**2026-10-24 已宣布停运**，12-01 起暂停共享集群服务，正撞评审期）；
 > 不用 HF Spaces（Docker Space **现需付费计划**）；
@@ -282,10 +286,9 @@ PAYPAL_CLIENT_ID=...        # PayPal 沙箱
 PAYPAL_CLIENT_SECRET=...
 PAYPAL_WEBHOOK_ID=...
 LLM_API_KEY=...             # 任意 OpenAI 兼容端点
-PYTHON_VERSION=3.11.9       # 平台默认会是 3.14，太新
 ```
 
-细节、平台选型依据（含三次走弯路的记录）、银联卡可行性、额度核算、验收清单见
+细节、平台选型依据（含三次走弯路的记录）、银联卡可行性、F1 额度核算、验收清单见
 **[W06_DEPLOY.md](W06_DEPLOY.md)**。
 
 ## API
