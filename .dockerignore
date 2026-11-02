@@ -13,6 +13,7 @@ __pycache__/
 # 密钥与本地配置（绝不能进镜像）
 .env
 .env.local
+deploy.env
 replacements.txt
 *.replacements.txt
 
