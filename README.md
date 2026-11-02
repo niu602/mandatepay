@@ -55,9 +55,8 @@ paypal-ai-hackathon/
 │   └── audit.html         # 三层 Mandate 审计页 + 人工确认入口
 ├── mandatepay.db          # SQLite 备份（已 gitignore）
 ├── Dockerfile              # 容器镜像（$PORT 兼容各平台）
-├── Procfile                # Zeabur/Render 原生模式启动命令
-├── render.yaml             # Render Blueprint（绑卡后可用）
-├── zeabur.yaml             # Zeabur 服务定义（免卡，当前方案）
+├── Procfile                # 原生模式启动命令
+├── render.yaml             # Render Blueprint（IaC 路径，本次不用 —— 会触发卡片弹窗）
 ├── WEEK1_REVIEW.md        # 第 1 周复盘（D1-D7）
 ├── WEEK2_REVIEW.md        # 第 2 周复盘（D8-D14）
 ├── W05_ZAI_MIGRATION.md   # Z.ai 接入 + 意图解析重测（含 429 应对）
@@ -252,12 +251,12 @@ python scripts/verify_llm_zai.py --repeat 3 --thinking disabled --md LLM_INTENT_
 最新结果：**60/60 正确、20/20 三次一致、降级 0 次** →
 [LLM_INTENT_VERIFICATION.md](LLM_INTENT_VERIFICATION.md)
 
-## 部署（Neon + Zeabur，全免费）
+## 部署（Neon + Render，全免费）
 
 ```bash
 # 1. Neon：console.neon.tech 建免费项目（Region 选 AWS US West (Oregon)），复制连接串
-# 2. Zeabur：zeabur.com → 新建 Project → Deploy New Service → 选本仓库
-#    → 填环境变量 → Deploy（自动识别 Dockerfile 或 Procfile）
+# 2. Render：render.com → GitHub 登录 → Dashboard → New + → Web Service（不要走 Blueprint）
+#    → 选本仓库 → Runtime=Python / Plan=Free → 填环境变量 → Create Web Service
 # 3. 部署后初始化（建表 + 种子数据 + 清场）
 DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 ```
@@ -265,10 +264,12 @@ DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 | 组件 | 选型 | 为什么 |
 |---|---|---|
 | 数据库 | **Neon** 免费 PostgreSQL | 只休眠不删库，评审期（12-01~12-15）安全 |
-| 应用 | **Zeabur** 免费 Web Service | **无需信用卡**（Render 免费档 2026 年要绑卡做 Stripe $1 验证），控制台原生中文 |
+| 应用 | **Render** 免费 Web Service | 2026 年唯一还有真正免费通用套餐的 PaaS（750 实例小时/月），**免费实例无需绑卡** |
 
 > 不用 Render 免费 PostgreSQL（**创建 30 天后删除**，正落在评审期内）；
-> 不用 Supabase 免费层（**7 天无活动即暂停**，需手动恢复）。
+> 不用 Supabase 免费层（**7 天无活动即暂停**）；
+> 不用 Zeabur（**2026-10-24 已宣布停运**，12-01 起暂停共享集群服务，正撞评审期）；
+> 不用 HF Spaces（Docker Space **现需付费计划**）。
 
 必填环境变量（其余已配好）：
 
@@ -280,7 +281,8 @@ PAYPAL_WEBHOOK_ID=...
 LLM_API_KEY=...             # 任意 OpenAI 兼容端点
 ```
 
-细节、验收清单、冷启动记录、已知限制见 **[W06_DEPLOY.md](W06_DEPLOY.md)**。
+细节、平台选型依据（含两次走弯路的记录）、银联卡可行性、验收清单见
+**[W06_DEPLOY.md](W06_DEPLOY.md)**。
 
 ## API
 

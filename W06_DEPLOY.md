@@ -1,23 +1,27 @@
 # W-06 · Neon + Render 部署（全免费）
 
-> 执行时间：2026-11-01　目标：把 MandatePay 部署成公开可访问的 URL，供海外评委直接体验。
+> 执行时间：2026-11-01（方案于 11-02 修订）　目标：把 MandatePay 部署成公开可访问的 URL，供海外评委直接体验。
 >
-> **状态更新（11-02）**：Neon 数据库 ✅ 已建好并初始化；**Render 被 Stripe 卡片验证拦住**
-> （见 §二），已切换到免卡方案 **Zeabur**（见 §三）。
+> **修订说明**：本工单中途两次修正平台结论，过程记录在 §二（Zeabur 已停运、
+> HF Spaces 需付费），最终**回到 Render** —— 但要走「直接创建 Web Service」
+> 而非 Blueprint 路径，因为后者会触发 Stripe 卡片弹窗。
 
 ---
 
-## 一、平台选型（为什么是 Neon + Render）
+## 一、平台选型（最终结论）
 
 | 方案 | 结论 | 原因 |
 |---|---|---|
-| **Neon** 免费 PostgreSQL | ✅ **采用** | 免费项目**不会自动删除**（只休眠，唤醒秒级）；提供标准 `postgresql://` 连接串；与 Render 同区（Oregon）时延迟低 |
+| **Neon** 免费 PostgreSQL | ✅ **采用** | 免费项目**不会自动删除**（只休眠，唤醒秒级）；提供标准 `postgresql://` 连接串 |
 | Render 免费 PostgreSQL | ❌ 不用 | **创建 30 天后删除** —— 11 月建库正好在评审期（12-01 ~ 12-15）内失效（R-09） |
-| Supabase 免费层 | ❌ 不用 | **7 天无活动即暂停**，需手动恢复。评审期间没人点就会挂 |
-| Render 免费 Web Service | ⚠️ **需绑卡** | 2026 年实际体验：创建服务时强制 Stripe 身份验证（$1 临时授权），**无法跳过** → 与"全免费"目标冲突，改用 Zeabur |
+| Supabase 免费层 | ❌ 不用 | **7 天无活动即暂停**，需手动恢复 |
+| **Render 免费 Web Service** | ✅ **采用** | 2026 年**唯一还有真正免费通用套餐**的 PaaS（750 实例小时/月，512MB / 0.1 CPU / 100GB 带宽），**免费实例无需绑卡** |
+| Zeabur 免费档 | ❌ 不用 | **2026-10-24 已宣布停止运营**：12-01 起共享集群暂停所有服务，12-31 全面停止 —— 正好撞上评审期 |
+| Hugging Face Spaces | ❌ 不用 | 官方文档：Docker Space **需要付费计划**（免费只保留 Static 与 ZeroGPU Gradio） |
+| Railway Free | ❌ 不用 | $5 试用是**一次性 30 天**、过期无循环额度（Hobby 每月 $5）；且 2026-10 安全事故后要求全体轮换密钥 |
 
 **关键约束**：评审期是 12-01 ~ 12-15。Neon 只休眠不删库 → 安全；
-Zeabur / Render 实例都会在无访问时休眠（唤醒 30-60 秒），这由评委访问触发，不影响数据。
+Render 免费实例 15 分钟无访问即休眠（唤醒 30-60 秒），由评委访问触发，不影响数据。
 
 ### Neon 连接串（已验证可用）
 
@@ -30,47 +34,91 @@ postgresql://neondb_owner:***@ep-soft-sky-arct6yay-pooler.c-4.us-west-2.aws.neon
 
 ---
 
-## 二、Render 的卡片验证（为什么换方案）
+## 二、方案修订过程（两次走错的记录）
 
-创建 Blueprint 时弹出 **"Add Card — Add credit card to verify your identity"**：
-全名 / 国家或地区 / 邮编 / 卡号，Stripe 托管，`$1 USD 临时授权不扣费`。
-右上角只有关闭按钮（×），**关闭后无法继续部署**。
+工单原本指定 Render。执行中发现两个"看起来过不去"的坎，逐一查证后结论如下。
 
-### 结论
+### 2.1 坎一：Render 的 Stripe "Add Card" 弹窗
 
-- 这是 **Render 账号级的身份验证**，不是免费档的"付费墙" —— 但对"全免费"目标是硬门槛。
-- 多方资料一致：Render 免费档**理论**上无需卡（750 小时/月），但 2026 年实际对新账号
-  普遍要求 Stripe 验证（地域/风控策略差异）。
-- **绕过方式**：用任意真实信用卡走完 $1 验证，之后免费档可用；
-  但这违背"全免费"前提，且国内信用卡的 Stripe 验证常被拒。
+**现象**：点 Blueprint → 弹出「Add Card — Add credit card to verify your identity」，
+Stripe 托管，`$1 USD 临时授权不扣费`，右上角只有 ×，**关闭后无法继续部署**。
 
-### 决策：改用 Zeabur（无需信用卡）
+**查证结论：这个弹窗是 Blueprint 路径特有的，绕过办法是改走「直接创建 Web Service」。**
 
-| 维度 | Render | **Zeabur** |
+Render 官方 FAQ 原话（2026-10 实测存档）：
+
+> "注册页面只有邮箱加密码，或者用 GitHub、GitLab、Bitbucket、Google 账号登录，
+> **没有填卡这一格**。加卡的时候会扣 1 美元做验证，交易完成后退回……
+> **不加卡，免费实例照样能用。**"
+
+多方 2026 年实测一致：注册 → Dashboard → **New + → Web Service** → 选仓库 →
+Instance Type 选 **Free** → 全程**不要求绑卡**。绑卡只是升级付费档或加购资源时的前置。
+
+> 也就是说，工单截图里那个弹窗并不是"Render 免费档必须绑卡"，
+> 而是"Blueprint 这条路径会拉起支付校验"。**改走手动创建即可绕过。**
+
+### 2.2 坎二：银联卡能不能绑？
+
+**能，但有条件。**（据 Stripe 官方文档与多方实测）
+
+| 卡种 | 可行性 | 说明 |
 |---|---|---|
-| 是否要卡 | ⚠️ **要**（Stripe $1 验证） | ✅ **不要** |
-| 免费额度 | 750 小时/月 | $5/月等值额度 |
-| 内存 | 512MB | 256MB（**实测应用只用 60MB，够用**） |
-| 休眠 | 15 分钟 | 15 分钟 |
-| 控制台 | 英文 | ✅ **原生中文**（华人团队，对国内用户友好） |
-| 部署方式 | Blueprint（render.yaml） | GitHub 直连 / Dockerfile |
-| 数据库 | 免费 PG 30 天删除 | 用外部 Neon（不删） |
+| **境内银行双标卡**（带 Visa/Mastercard 标识） | ✅ 可尝试 | Stripe 优先走 Visa/Master 通道。实测初始通过率约 45%，大额扣款降到 15%；**$1 预授权金额小，通过率明显高于大额扣款** |
+| **纯银联单标卡**（BIN 以 62 开头） | ❌ 基本不行 | Stripe 官方文档：中国银联（CUP）在线支付**仅支持特定账户地区**（美/英/加/澳/新/港/新马/瑞士/EEA），中国大陆不在列；实测单标卡绑定成功率不足 12% |
+| 香港中资银行实体卡 | ✅ 通过率更高（70%） | — |
+
+**如果仍想绑卡**，四个必须先做好的准备（否则必被拒）：
+
+1. 银行 App 里开通**国际线上支付 + 无卡交易 + 自动扣款**三项开关（国内卡默认关闭）
+2. 账单地址**填卡的实际发卡地**，邮编要与银行登记一致（填海外地址直接触发风控）
+3. 用**双标卡**（有 Visa/Master 标识），不是纯银联单标
+4. **IP 与账单地址地区保持一致**（人在国内就用国内地址，别配海外地址）
+
+> 但既然直接创建 Web Service 就不需要卡，**最省事的做法是根本不绑卡**。
+
+### 2.3 中途排除的两个平台（避免后来者重走）
+
+**Zeabur —— 已停运**（官方公告 zeabur.com/blogs/zeabur-is-shutting-down）：
+
+> "12 月 1 日起，共享集群：**暂停所有正在运行的服务**。你仍然可以手动恢复服务运行，以便进行数据备份。
+> 12 月 31 日：所有独立服务器到期关闭，所有共享集群停止服务。"
+
+评审期是 12-01 ~ 12-15 —— **服务在评审第一天就被暂停**，比 Render 免费 PG 的 30 天删除更致命。
+（背景：2026 年下半年两起安全事件后决定结束运营。）
+
+**Hugging Face Spaces —— Docker Space 现已需要付费计划**（官方文档）：
+
+> "Static Spaces are free for everyone.
+> **Gradio and Docker Spaces run on compute and require a paid plan to create.**"
+
+免费只保留 Static Space 与 ZeroGPU Gradio（个人号限 2 个）。Docker 跑任意 Web 后端已不免费。
+（其余限制：仅 80/443/8080 端口、16GB RAM/2 vCPU、50GB 非持久磁盘。）
 
 ---
 
-## 三、Zeabur 部署步骤（免卡，中文界面）
+## 三、Render 部署步骤（走手动 Web Service，绕过 Blueprint）
 
-### 步骤 1：注册
+### 步骤 1：注册（不绑卡）
 
-1. 打开 https://zeabur.com → **GitHub 登录**
-2. 新建 Project（项目）
+1. 打开 https://render.com → **用 GitHub 账号登录**（同时授权仓库 `niu602/mandatepay`）
+2. **不要**进入任何 Billing / 计划升级页面（那里才会要求绑卡）
 
-### 步骤 2：部署服务
+### 步骤 2：创建 Web Service（关键：不要用 Blueprint）
 
-1. Project → **Deploy New Service** → 选 GitHub 仓库 `niu602/mandatepay`
-2. 平台会检测到 `Dockerfile` → 用容器模式
-   （若想更快，可删掉 Dockerfile 用 Python 原生模式 + `requirements.txt`，平台自动识别）
-3. **Variables** 里填环境变量：
+Dashboard → **New + → Web Service** → 选仓库 `niu602/mandatepay` → Connect
+
+| 配置项 | 值 |
+|---|---|
+| Name | `mandatepay` |
+| Region | **Oregon**（与 Neon 同区，延迟最低）或 Singapore |
+| Branch | `master` |
+| Runtime | **Python** |
+| Build Command | `pip install -r requirements.txt` |
+| Start Command | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Instance Type | **Free**（512MB / 0.1 CPU） |
+| Health Check Path | `/api/health` |
+
+### 步骤 3：填环境变量
 
 | 变量 | 值 |
 |---|---|
@@ -79,12 +127,15 @@ postgresql://neondb_owner:***@ep-soft-sky-arct6yay-pooler.c-4.us-west-2.aws.neon
 | `PAYPAL_CLIENT_SECRET` | PayPal 沙箱 Secret |
 | `PAYPAL_WEBHOOK_ID` | Webhook ID |
 | `LLM_API_KEY` | Z.ai key |
+| `PAYPAL_MODE` | `sandbox` |
+| `LLM_BASE_URL` | `https://api.z.ai/api/paas/v4` |
+| `LLM_MODEL` | `glm-4.7-flash` |
+| `LLM_THINKING` | `disabled` |
 
-   非敏感项已写在 `zeabur.yaml` 里：`PAYPAL_MODE=sandbox` / `LLM_BASE_URL` / `LLM_MODEL=glm-4.7-flash` / `LLM_THINKING=disabled`
+> `render.yaml` 已写好同一套配置，但**本次不用它**（Blueprint 路径会触发卡片弹窗）。
+> 该文件保留在仓库里，日后若要 IaC 部署可直接用。
 
-4. **Deploy** → 拿到 `https://mandatepay-xxx.zeabur.app`
-
-### 步骤 3：部署后初始化
+### 步骤 4：部署后初始化
 
 Neon 侧的建表/种子/清场**已完成**（本地连 Neon 执行的 `deploy_init.sh`）。
 若换新库，重跑：
@@ -93,29 +144,16 @@ Neon 侧的建表/种子/清场**已完成**（本地连 Neon 执行的 `deploy_
 DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 ```
 
----
+### 备选：Hugging Face Spaces（若 Render 也用不了）
 
-## 四、备选：Hugging Face Spaces（若 Zeabur 也不合适）
-
-免费 Docker Space，**无需卡**，2 vCPU / 16GB RAM（最宽裕），48 小时休眠（最宽容）。
-
-1. https://huggingface.co/spaces/new → SDK 选 **Docker**
-2. 仓库地址填 `https://huggingface.co/spaces/<你的用户名>/mandatepay`：
-   ```
-   git remote add hf https://huggingface.co/spaces/<用户名>/mandatepay
-   git push hf main
-   ```
-3. Variables/Secrets 里填同样的 5 个环境变量
-4. 访问 `https://<用户名>-mandatepay.hf.space`
-
-⚠️ HF Spaces 要求 **端口 7860**（或 Dockerfile 里的 EXPOSE 与之匹配），
-且根路径 `/` 必须返回响应（我们的 `/` 返回支付页，满足）。
+免费 Docker Space，**无需卡**，2 vCPU / 16GB RAM，48 小时休眠。
+⚠️ 但官方文档写明 Docker Space 现需付费计划 —— 只作为最后的备选记录。
 
 ---
 
-## 五、本地已完成的准备工作
+## 四、本地已完成的准备工作
 
-### 5.1 代码修复（部署前必须做，否则线上有问题）
+### 4.1 代码修复（部署前必须做，否则线上有问题）
 
 | 修复 | 原因 | 文件 |
 |---|---|---|
@@ -123,17 +161,17 @@ DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 | **启动时自动建表** | Neon 免费项目**只有空库没有表**，而建表逻辑在 `store._Conn.__enter__`（连接时执行）。若不显式触发，**第一个请求才建表** → 冷启动首请求超时 | `app/main.py`（lifespan） |
 | 静态资源直出 | 部署后前端资源统一走 `/static` | `app/main.py` |
 
-### 5.2 部署配置
+### 4.2 部署配置
 
 | 文件 | 用途 |
 |---|---|
-| `render.yaml` | Render Blueprint（若日后绑卡可用，配置已就绪） |
-| `zeabur.yaml` | Zeabur 服务定义（免卡方案，当前采用） |
+| `render.yaml` | Render Blueprint（IaC 路径，本次不用 —— 会触发卡片弹窗） |
 | `Dockerfile` | 容器镜像，`$PORT` 兼容各平台端口注入，`exec` 形式保证正确接收 SIGTERM |
 | `.dockerignore` | 排除 `.env` / `node_modules` / 本地数据库 / `static/vendor`，防密钥进镜像 |
+| `Procfile` | 启动命令（若平台走原生模式） |
 | `scripts/deploy_init.sh` | 一键：建表 → 种子约束 → 同步目录 → 清场 |
 
-### 5.3 本地验证结果
+### 4.3 本地验证结果
 
 ```
 ✅ 五个页面全部 200：/ /constraints /budget /approvals /audit
@@ -144,16 +182,18 @@ DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 ✅ deploy_init.sh 全流程跑通（建表→约束→目录→清场）
 ✅ 清场后应用正常：约束 $200 / 预算已花 $0
 ✅ Neon 实连：PG 18.6，六表就绪，约束已写，目录已同步，已清场
+✅ Procfile 命令 + Neon 生产库 + 完整环境变量 → 六端点全 200
+✅ 真实 LLM 链路：连 Neon + Z.ai 走 function calling，解析正确
 ✅ DSN 兼容：postgres:// 与 postgresql:// 都能用（store._effective_dsn 归一化）
-✅ 应用常驻内存 60MB（Zeabur 免费档 256MB 有余量）
+✅ 应用常驻内存 60MB（Render 免费档 512MB 有充足余量）
 ```
 
-### 5.4 冷启动预判（实测前）
+### 4.4 冷启动预判（实测前）
 
 | 项 | 实测值 | 判断 |
 |---|---|---|
 | 应用 import 耗时 | **0.68s** | 运行时不构成瓶颈 |
-| 应用常驻内存 | **60MB** | Zeabur 256MB 够用 |
+| 应用常驻内存 | **60MB** | Render 512MB 充足 |
 | `paypal-agent-toolkit` 传递依赖 | **仅 httpx / pydantic / requests** | 很轻，工单担心的"依赖过重"**不成立** |
 | `uvicorn[standard]` | 含 httptools / uvloop / watchfiles | 需编译或取预编译 wheel → **构建期**可能慢（不是运行期） |
 | langchain 链 | langgraph + langchain + langchain-openai | 中等，pip 安装约 1-2 分钟 |
@@ -163,7 +203,7 @@ DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 
 ---
 
-## 六、验收清单（DoD）
+## 五、验收清单（DoD）
 
 部署完成后逐项核对：
 
@@ -174,13 +214,13 @@ DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 
 ---
 
-## 七、冷启动耗时记录
+## 六、冷启动耗时记录
 
 | 场景 | 耗时 | 备注 |
 |---|---|---|
 | 首次构建 | 待填 | pip install 全量 |
-| 首次访问（冷） | 待填 | 平台实例启动 + 应用初始化 |
-| 休眠后唤醒 | 待填 | 15 分钟无访问即休眠 |
+| 首次访问（冷） | 待填 | Render 实例启动 + 应用初始化 |
+| 休眠后唤醒 | 待填 | 15 分钟无访问即休眠，官方称唤醒约 1 分钟 |
 
 **若冷启动 > 90 秒**，按工单顺序精简：
 1. `uvicorn[standard]` → 裸 `uvicorn`（去掉 httptools/uvloop/watchfiles 编译依赖）
@@ -188,17 +228,18 @@ DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 
 ---
 
-## 八、已知限制（如实记录）
+## 七、已知限制（如实记录）
 
 1. **API 无鉴权**（技术债 #12）：公网部署后 `/api/*` 全部暴露。
    本项目是 Demo 性质，评审期可接受；但**不要放任何真实数据**。
 2. **实例 15 分钟休眠**：评委访问会触发唤醒（30-60 秒）。
    建议**演示前自己访问一次预热**，或接受首次加载慢。
 3. **`/budget` 的 AG Studio 走 CDN**（若未在构建期装 `static/vendor/`）：
-   `static/vendor/` 已 gitignore（npm 商业包），容器构建时不会自动装。
+   `static/vendor/` 已 gitignore（npm 商业包），Render 构建时不会自动装。
    页面会自动回退 jsdelivr CDN —— **功能正常**，但首屏依赖外网。
 4. **PayPal Webhook 需要公网 URL**：部署后把 webhook 地址改成
    `https://<你的域名>/api/webhook`（比 ngrok 稳定，评审期一直有效）。
-5. **密钥已在聊天中出现**：Neon 连接串（2026-11-02）包含数据库密码，
-   建议在 Neon 控制台**轮换密码**（Rotation），并同步更新平台环境变量。
+5. **Neon 连接串（数据库密码）曾在聊天中明文出现** —— 按用户要求不做处理，
+   但记录在案：若后续要轮换，需同步更新 Render 的 `DATABASE_URL`。
+
 
