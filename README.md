@@ -48,14 +48,21 @@ paypal-ai-hackathon/
 │   ├── migrate_sqlite_to_pg.py   # SQLite → PostgreSQL 数据迁移
 │   ├── setup_webhook.py          # REST API 管理 Webhook 订阅
 │   ├── verify_llm_zai.py         # 意图解析验证（20 句断言集 + 降级统计 + 断点续跑）
-│   └── scan_secrets.py           # 宽口径密钥扫描（工作树 + 全历史）
+│   ├── deploy_init.sh            # 部署后一键：建表 → 种子数据 → 清场
+│   └── scan_secrets.py           # 宽口径密钥扫描（工作树 + 全历史 + 自检）
 ├── static/
 │   ├── index.html         # PayPal JS SDK 支付按钮页（Web 流）
 │   └── audit.html         # 三层 Mandate 审计页 + 人工确认入口
 ├── mandatepay.db          # SQLite 备份（已 gitignore）
+├── Dockerfile              # 容器镜像（$PORT 兼容各平台）
+├── Procfile                # Zeabur/Render 原生模式启动命令
+├── render.yaml             # Render Blueprint（绑卡后可用）
+├── zeabur.yaml             # Zeabur 服务定义（免卡，当前方案）
 ├── WEEK1_REVIEW.md        # 第 1 周复盘（D1-D7）
 ├── WEEK2_REVIEW.md        # 第 2 周复盘（D8-D14）
 ├── W05_ZAI_MIGRATION.md   # Z.ai 接入 + 意图解析重测（含 429 应对）
+├── W06_DEPLOY.md          # 部署记录（Neon + Zeabur，平台选型依据）
+├── LLM_INTENT_VERIFICATION.md  # 意图解析验证报告（20 句 × 3 次）
 ├── LICENSE                # MIT（Copyright 2026 Niu Zisen）
 ├── .env / .env.example
 └── README.md
@@ -245,24 +252,25 @@ python scripts/verify_llm_zai.py --repeat 3 --thinking disabled --md LLM_INTENT_
 最新结果：**60/60 正确、20/20 三次一致、降级 0 次** →
 [LLM_INTENT_VERIFICATION.md](LLM_INTENT_VERIFICATION.md)
 
-## 部署（Neon + Render，全免费）
+## 部署（Neon + Zeabur，全免费）
 
 ```bash
 # 1. Neon：console.neon.tech 建免费项目（Region 选 AWS US West (Oregon)），复制连接串
-# 2. Render：render.com → New → Blueprint → 选本仓库 → 填环境变量 → Apply
+# 2. Zeabur：zeabur.com → 新建 Project → Deploy New Service → 选本仓库
+#    → 填环境变量 → Deploy（自动识别 Dockerfile 或 Procfile）
 # 3. 部署后初始化（建表 + 种子数据 + 清场）
-bash scripts/deploy_init.sh
+DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 ```
 
 | 组件 | 选型 | 为什么 |
 |---|---|---|
 | 数据库 | **Neon** 免费 PostgreSQL | 只休眠不删库，评审期（12-01~12-15）安全 |
-| 应用 | **Render** 免费 Web Service | 自动从 GitHub 构建，`render.yaml` 声明式配置 |
+| 应用 | **Zeabur** 免费 Web Service | **无需信用卡**（Render 免费档 2026 年要绑卡做 Stripe $1 验证），控制台原生中文 |
 
 > 不用 Render 免费 PostgreSQL（**创建 30 天后删除**，正落在评审期内）；
 > 不用 Supabase 免费层（**7 天无活动即暂停**，需手动恢复）。
 
-必填环境变量（`render.yaml` 里其余已配好）：
+必填环境变量（其余已配好）：
 
 ```bash
 DATABASE_URL=postgresql://user:password@ep-xxx.us-west-2.aws.neon.tech/mandatepay?sslmode=require

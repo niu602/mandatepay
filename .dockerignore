@@ -1,0 +1,50 @@
+# ── Docker 构建上下文排除项 ─────────────────────────────────
+# 目的：减小镜像体积 + 防止把本地开发产物/密钥打进镜像
+
+# 依赖与缓存（镜像内会重新 pip install）
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+
+# 密钥与本地配置（绝不能进镜像）
+.env
+.env.local
+replacements.txt
+*.replacements.txt
+
+# 本地数据库（含真实沙箱订单记录）
+*.db
+*.sqlite
+*.sqlite3
+.pgdata/
+pg.log
+
+# AG Studio 前端运行时（npm 商业包，体积大且不入库；
+# 未包含时 budget.html 自动回退 jsdelivr CDN，功能不受影响）
+static/vendor/
+
+# 版本控制与编辑器
+.git/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 本地开发辅助数据
+.workbuddy/
+node_modules/
+
+# 归档与工具
+*.zip
+*.exe
+tools/
+
+# 文档与图片（镜像里用不到，减小体积）
+*.md
+!README.md
+*.png
+*.docx

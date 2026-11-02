@@ -1,0 +1,51 @@
+# Zeabur 部署配置（免费档，无需信用卡）
+#
+# 为什么改用 Zeabur：Render 免费档在 2026 年需要绑卡做 Stripe 身份验证
+# （$1 临时授权），绑卡才能创建服务 —— 对"全免费"的部署目标是硬门槛。
+# Zeabur 免费档：**无需信用卡**，$5/月等值额度，控制台原生中文。
+#
+# 部署步骤：
+# 1. https://zeabur.com 注册（GitHub 登录最快）
+# 2. 新建 Project → Deploy New Service → 选 GitHub 仓库 niu602/mandatepay
+#    → 检测到 Dockerfile 就用容器模式（也可选 Python 原生模式，见下方说明）
+# 3. 在 Variables 里填环境变量（本文件已给出非敏感项）
+# 4. Deploy → 拿到 *.zeabur.app 域名
+#
+# 两种运行模式的区别：
+# - 容器模式（本文件生效）：用 Dockerfile，构建可控，冷启动行为可预期
+# - Python 原生模式：Zeabur 自动识别 requirements.txt + Procfile，
+#   不用 Docker，构建更快但依赖 Zeabur 的检测逻辑
+#
+# 数据库：Neon 免费项目（外部托管，不随服务休眠而删库）
+
+# ── Zeabur 服务定义 ─────────────────────────────────────
+# 供 API/CLI 部署时使用（手动在 Dashboard 部署则不需要本文件）。
+# 字段含义见 https://zeabur.com/docs/en-US/deploy/template
+
+services:
+  - name: mandatepay
+    # Dockerfile 存在 → 容器模式；不存在则回退到 Python 原生模式
+    dockerfile: Dockerfile
+    port: 8000
+    # 暴露给外网的端口（Zeabur 会在其边缘网关做 TLS 终止）
+    public_port: 80
+    health_check:
+      path: /api/health
+      # 应用 import 约 0.7s、启动建表约 1-2s，给足冷启动余量
+      initial_delay_seconds: 20
+      period_seconds: 30
+      timeout_seconds: 10
+      failure_threshold: 3
+    env:
+      # ── 非敏感项（可直接用）─────────────────────────
+      PAYPAL_MODE: sandbox
+      LLM_BASE_URL: https://api.z.ai/api/paas/v4
+      LLM_MODEL: glm-4.7-flash
+      LLM_THINKING: disabled
+      PYTHON_VERSION: "3.11"
+      # ── 敏感项（必须手动填，或用 Zeabur Secrets）─────
+      # DATABASE_URL: postgresql://...@ep-xxx.us-west-2.aws.neon.tech/neondb?sslmode=require
+      # PAYPAL_CLIENT_ID:
+      # PAYPAL_CLIENT_SECRET:
+      # PAYPAL_WEBHOOK_ID:
+      # LLM_API_KEY:
