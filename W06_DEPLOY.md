@@ -107,47 +107,77 @@ Instance Type 选 **Free** → 全程**不要求绑卡**。绑卡只是升级付
 
 Dashboard → **New + → Web Service** → 选仓库 `niu602/mandatepay` → Connect
 
-| 配置项 | 值 |
-|---|---|
-| Name | `mandatepay` |
-| Region | **Oregon**（与 Neon 同区，延迟最低）或 Singapore |
-| Branch | `master` |
-| Runtime | **Python** |
-| Build Command | `pip install -r requirements.txt` |
-| Start Command | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
-| Instance Type | **Free**（512MB / 0.1 CPU） |
-| Health Check Path | `/api/health` |
+#### 2.1 主表单（Build & Deploy 区域）—— 逐项照抄
 
-### 步骤 3：填环境变量
+| 表单项 | 填什么 | 说明 |
+|---|---|---|
+| **Name** | `mandatepay` | 决定域名 `mandatepay.onrender.com` |
+| **Region** | **Oregon**（或 Singapore） | 与 Neon 同区时数据库延迟最低；Neon 建的是 `us-west-2` → **选 Oregon** |
+| **Branch** | `master` | ⚠️ 本仓库主分支是 `master` 不是 `main` |
+| **Language / Runtime** | **Python** | 会自动带出 Python 运行时 |
+| **Root Directory** | 留空 | 仓库根目录即项目根 |
+| **Build Command** | `pip install -r requirements.txt` | 也可以留空（Render 会自动检测 requirements.txt），但显式写更稳 |
+| **Start Command** | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` | **必须绑定 `0.0.0.0`** 且用 `$PORT`（Render 默认注入 `PORT=10000`） |
+| **Instance Type / Plan** | **Free** | 512MB / 0.1 CPU / 750 小时/月 |
+| **Auto Deploy** | **Yes** | push 到 master 自动重新部署 |
 
-| 变量 | 值 |
-|---|---|
-| `DATABASE_URL` | Neon 连接串（见 §一） |
-| `PAYPAL_CLIENT_ID` | PayPal 沙箱 Client ID |
-| `PAYPAL_CLIENT_SECRET` | PayPal 沙箱 Secret |
-| `PAYPAL_WEBHOOK_ID` | Webhook ID |
-| `LLM_API_KEY` | Z.ai key |
-| `PAYPAL_MODE` | `sandbox` |
-| `LLM_BASE_URL` | `https://api.z.ai/api/paas/v4` |
-| `LLM_MODEL` | `glm-4.7-flash` |
-| `LLM_THINKING` | `disabled` |
+#### 2.2 Advanced 区域（可折叠的那一栏）
 
-> `render.yaml` 已写好同一套配置，但**本次不用它**（Blueprint 路径会触发卡片弹窗）。
-> 该文件保留在仓库里，日后若要 IaC 部署可直接用。
+| 选项 | 设置 | 为什么 |
+|---|---|---|
+| **Environment Variables** | 见 §2.3，填 9 个 | 必填 |
+| **Health Check Path** | `/api/health` | 我们的健康检查端点已存在（`app/main.py`）。留空也能跑，但填了能拿到正确的健康状态 |
+| **Pull Request Previews** | 不启用 | 单人项目，用不上 |
+| **Private Service** | **不启用** | 启用后只有同 workspace 的付费服务能访问，评委就访问不到了 |
+| **IP Allowlist** | 不启用 | 同上，别把自己关在门外 |
+| **Persistent Disk** | **不添加** | Free 实例不支持持久盘；且我们的数据在 Neon，无需本地盘 |
+| **Docker Command / Context / Dockerfile Path** | 留空 | 我们走 **Python 原生运行时**，不用 Docker。（若选 Docker 运行时才需填 `Dockerfile`） |
+| **Dockerignore Path** | 留空 | 同上 |
 
-### 步骤 4：部署后初始化
+#### 2.3 Environment Variables —— 9 个，**全部加进"Environment Variables"分组**
 
-Neon 侧的建表/种子/清场**已完成**（本地连 Neon 执行的 `deploy_init.sh`）。
-若换新库，重跑：
+Render 会自动注入一批 `RENDER_*` 变量和 `PORT`，**不用自己填**。
+
+| Key | Value | 是否敏感 |
+|---|---|---|
+| `DATABASE_URL` | 你的 Neon 连接串（整条，含 `?sslmode=require&channel_binding=require`） | 🔑 敏感 |
+| `PAYPAL_CLIENT_ID` | PayPal 沙箱 Client ID | 🔑 敏感 |
+| `PAYPAL_CLIENT_SECRET` | PayPal 沙箱 Secret | 🔑 敏感 |
+| `PAYPAL_WEBHOOK_ID` | PayPal Webhook ID | 🔑 敏感 |
+| `LLM_API_KEY` | Z.ai key | 🔑 敏感 |
+| `PAYPAL_MODE` | `sandbox` | 普通 |
+| `LLM_BASE_URL` | `https://api.z.ai/api/paas/v4` | 普通 |
+| `LLM_MODEL` | `glm-4.7-flash` | 普通 |
+| `LLM_THINKING` | `disabled` | 普通 |
+| **`PYTHON_VERSION`** | **`3.11.9`** | ⚠️ **必加**，见下 |
+
+> **⚠️ `PYTHON_VERSION` 一定要设成 `3.11.9`**
+> Render 对 2026-10-12 之后新建的服务**默认用 Python 3.14.8**。
+> 我们的依赖链（langgraph 1.2 / langchain 1.4 / pydantic 2.14）本地是在 **3.13.16** 上
+> 完整验证的，3.14 是个很新的版本 —— pydantic-core 等含 C 扩展的包可能没有预编译 wheel
+> 而触发源码编译，构建变慢甚至失败。
+> 锁 3.11.9 是 Render 长期支持的稳定版本（最低支持 3.7.3，Debian 12 bookworm 基线），
+> 与 3.13 的依赖兼容性差异极小。
+> 也已在仓库根加了 `.python-version` 文件（内容 `3.11.9`）—— Render 官方支持这种写法，
+> 两种方式等效，env var 优先。
+
+#### 2.4 提交后
+
+点 **Create Web Service** → 看实时构建日志 → 首次约 2-4 分钟（pip install langchain 链）→
+状态变 **Live** → 拿到 `https://mandatepay.onrender.com`
+
+### 步骤 3：部署后验证（无需在 Render 上执行命令）
+
+> 💡 **注意**：Render **Free 实例没有 Shell/SSH**（官方明确列为不支持的功能），
+> 所以不能像 Render 付费实例那样进 Shell 跑命令。
+> **好消息是 Neon 侧的建表/种子/清场我已经在本地连库执行完了**，
+> 部署完直接访问即可，不需要任何额外操作。
+
+若日后换了新库，在**本地**跑（不需要 Render Shell）：
 
 ```bash
 DATABASE_URL=<neon连接串> bash scripts/deploy_init.sh
 ```
-
-### 备选：Hugging Face Spaces（若 Render 也用不了）
-
-免费 Docker Space，**无需卡**，2 vCPU / 16GB RAM，48 小时休眠。
-⚠️ 但官方文档写明 Docker Space 现需付费计划 —— 只作为最后的备选记录。
 
 ---
 
