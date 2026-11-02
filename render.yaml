@@ -1,17 +1,22 @@
 # Render 部署配置（免费 Web Service）
 #
+# ⚠️ **本文件当前不作为部署入口使用** —— 走 Blueprint 创建服务时 Render 会拉起
+# Stripe 的 "Add Card" 身份验证弹窗（$1 临时授权），无法跳过。
+# 但那只是 **Blueprint 路径特有**的：Render 官方 FAQ 明确免费实例无需绑卡
+# （"不加卡，免费实例照样能用"），改走 Dashboard → New + → Web Service 即可绕过。
+#
+# 详见 W06_DEPLOY.md §二。
+#
 # 平台选择理由（见 W06_DEPLOY.md）：
 # - 不用 Render 免费 PostgreSQL：创建 30 天后删除 —— 11 月建库正好在评审期
 #   （12-01 ~ 12-15）内失效（R-09）
 # - 不用 Supabase 免费层：7 天无活动即暂停，需手动恢复
+# - 不用 Zeabur：2026-10-24 已宣布停运，12-01 起暂停共享集群服务
 # - 用 Neon 免费项目：数据库不会自动删除（只休眠），且提供连接串
 #
-# 部署步骤：
-# 1. Neon 控制台建免费项目 → 取连接串 → 填到 Render 的 DATABASE_URL
-# 2. 把下面所有 sync: false 的环境变量在 Render Dashboard 填好
-# 3. Render Dashboard → New → Blueprint → 选本仓库 → Apply
-#
-# 注意：本文件不含任何密钥，全部通过 Dashboard 手动填入（sync: false）。
+# 若日后要恢复 IaC 部署（且已解决卡片问题），本文件可直接使用：
+# Render Dashboard → New → Blueprint → 选本仓库 → Apply
+# 敏感环境变量全部 sync: false 手动填。
 
 services:
   - type: web
