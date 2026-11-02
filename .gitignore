@@ -7,6 +7,8 @@ package-lock.json
 .env
 .env.local
 !.env.example
+# 部署用环境变量清单（含明文密钥，从 .env 生成，仅供粘贴到 Render）
+deploy.env
 # git-filter-repo 的替换表含明文旧密钥，绝不入库
 replacements.txt
 *.replacements.txt
