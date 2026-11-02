@@ -9,6 +9,13 @@
 2. 通用赋值（任意变量名被赋了一个长随机串）
    (api[_-]?key|secret|token|password)['"]?\\s*[:=]\\s*['"][A-Za-z0-9_\\-.]{16,}
 
+3. 数据库连接串里的密码（W-06 新增）
+   (postgres|postgresql|mysql|mongodb(\\+srv)?|redis)://[^:\\s]+:([^@\\s/]{8,})@
+   —— 这一条是实战补的：部署到 Neon 后连接串会出现在文档里，
+   而前两条都扫不到它（它不是"变量=值"形态，也不是厂商 key 前缀）。
+   曾有一次 `neondb_owner:***@...` 出现在文档中（用户名无害、密码已打码），
+   说明这类形态确实容易在写文档时漏掉，必须单独设口径。
+
 扫描范围：
   A. 工作树（未跟踪 + 已跟踪），排除 .git/.venv/node_modules 等噪音目录
   B. 全历史所有 blob（git rev-list --objects --all 逐个取出内容）
@@ -39,12 +46,20 @@ except Exception:
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 
-# ── 两条扫描口径 ────────────────────────────────────────
+# ── 三条扫描口径 ────────────────────────────────────────
 VENDOR_RE = re.compile(
     r"(sk-|ghp_|xoxb-|AKIA|AIza|eyJ)[A-Za-z0-9_\-]{12,}"
 )
 ASSIGN_RE = re.compile(
     r"(api[_-]?key|secret|token|password)['\"]?\s*[:=]\s*['\"][A-Za-z0-9_\-\.]{16,}",
+    re.IGNORECASE,
+)
+# 数据库连接串中的密码（只取密码部分作为命中片段）
+# 只扫**非本地**主机 —— `postgres:postgres@localhost` 是本地开发的默认口令，
+# 写进文档/脚本无数千处，扫出来全是噪音；真正要防的是云托管数据库的密码。
+DB_URL_RE = re.compile(
+    r"(?:postgres|postgresql|mysql|mongodb(?:\+srv)?|redis|amqp)://"
+    r"[^:\s/]+:([^@\s/]{8,})@(?!localhost|127\.0\.0\.1|0\.0\.0\.0)([^\s/'\"?]+)",
     re.IGNORECASE,
 )
 
@@ -56,11 +71,22 @@ SKIP_DIRS = {
 SKIP_FILE_SUFFIX = {".pyc", ".pyo", ".so", ".dll", ".exe", ".zip", ".mjs", ".map"}
 # 明确豁免：这些文件按设计就包含"看起来像密钥"的占位或示例
 ALLOW_FILES = {".env.example", ".env.sample", "LICENSE"}
+# 扫描器自身：里面**故意**写了一批假密钥样本做自检（should_hit 列表），
+# 它们不是真凭据。整文件豁免，避免自指误报。
+SCANNER_SELF = "scan_secrets.py"
 # 这些文件里的命中属于「文档/脚本里的示例文本」，人工确认过，不算泄漏
-ALLOW_SUBSTR = {
+# ⚠️ 豁免必须**精确**（整段等于），不能用"包含"判断 ——
+#    用包含判断时，"password" 会把 `password: "真实密码"` 这类真命中一起放过
+#    （W-06 自检实测到的：加豁免后工作树里的真密码反而没被抓到）。
+#    所以豁免项用精确匹配，且只列确定无疑的形态。
+ALLOW_SUBSTR_EXACT = {
     "***REMOVED***", "your-api-key", "your_api_key", "YOUR_API_KEY",
     "sk-xxxx", "sk-xxxxx", "sk-...", "<your-key>", "sk-todo",
     "sk-0000000000000000000000000000000000000000000000000",
+    # 打码后的密码段（文档里写连接串时习惯把密码替换成 ***）
+    "***",
+    # 文档里常见的占位符密码段（示例文本，非真实凭据）
+    "password", "passwd", "PASSWORD", "your_password", "your-password",
 }
 
 # ── base64 候选：长度 >= 24 的 base64 串 ────────────────
@@ -82,13 +108,30 @@ def _redact(text: str) -> str:
     return f"{text[:6]}***{text[-4:]}"
 
 
+def _is_allowed(raw: str) -> bool:
+    """判断命中片段是否属于豁免。
+
+    **精确匹配整段**，不做"包含"判断 ——
+    包含判断会让 `"password": "真实密码"` 里的 password 把整段放行（真泄漏被放过）。
+    对"变量=值"型命中（口径 1/2），额外检查**值部分**是否精确等于某个豁免项：
+    如 `api_key = 'sk-xxxx'` → 整段不是豁免，但值 `sk-xxxx` 是 → 豁免。
+    """
+    if raw in ALLOW_SUBSTR_EXACT:
+        return True
+    # 口径 2：拆出引号里的值再判断
+    m = re.search(r"['\"]([^'\"]{8,})['\"]", raw)
+    if m and m.group(1) in ALLOW_SUBSTR_EXACT:
+        return True
+    return False
+
+
 def _scan_text(text: str, source: str, layer: str) -> list[dict]:
-    """在一段文本里跑两条正则，返回命中列表。"""
+    """在一段文本里跑三条正则，返回命中列表。"""
     hits: list[dict] = []
     for kind, rx in (("vendor_prefix", VENDOR_RE), ("generic_assign", ASSIGN_RE)):
         for m in rx.finditer(text):
             raw = m.group(0)
-            if any(a in raw for a in ALLOW_SUBSTR):
+            if _is_allowed(raw):
                 continue
             # 取命中片段前后的上下文，便于人工判断
             lo = max(0, m.start() - 40)
@@ -103,6 +146,23 @@ def _scan_text(text: str, source: str, layer: str) -> list[dict]:
                 "context": ctx,
                 "length": len(raw),
             })
+    # 第三条：数据库连接串里的密码（只取密码部分作为命中片段）
+    for m in DB_URL_RE.finditer(text):
+        pwd = m.group(1)
+        if _is_allowed(pwd):
+            continue
+        lo = max(0, m.start() - 40)
+        hi = min(len(text), m.end() + 40)
+        ctx = text[lo:hi].replace("\n", "\\n")
+        hits.append({
+            "layer": layer,
+            "source": source,
+            "kind": "db_url_password",
+            "match_redacted": _redact(pwd),
+            "line": text.count("\n", 0, m.start()) + 1,
+            "context": ctx,
+            "length": len(pwd),
+        })
     return hits
 
 
@@ -152,6 +212,9 @@ def scan_worktree() -> list[dict]:
         if path.suffix.lower() in SKIP_FILE_SUFFIX:
             continue
         if path.name in ALLOW_FILES:
+            continue
+        # 扫描器自身（含故意的假密钥自检样本），避免自指误报
+        if path.name == SCANNER_SELF:
             continue
         # 明确忽略 .env 本体（本来就 gitignore，从不入库）
         if path.name == ".env" or path.name.endswith(".bak_w02"):
@@ -220,6 +283,9 @@ def scan_history() -> list[dict]:
         name = names.get(sha, sha)
         if name.endswith((".pyc", ".so", ".dll", ".exe", ".zip")):
             continue
+        # 扫描器自身的历史版本（含假密钥自检样本），避免自指误报
+        if name.endswith(SCANNER_SELF):
+            continue
         hits.extend(_scan_bytes(content, f"{sha[:8]}:{name}", "history"))
 
     return hits
@@ -243,10 +309,52 @@ def classify(hits: list[dict]) -> tuple[list[dict], list[dict]]:
     return real, fuzzy
 
 
+def _self_check() -> bool:
+    """扫描器自检：注入已知样本，确认每条口径都能检出。
+
+    为什么需要：W-06 实战发现 —— 部署到 Neon 后连接串出现在文档里，
+    而原有两条口径都扫不到它（既不是"变量=值"形态，也没有厂商 key 前缀）。
+    补了口径 3，但如果不验证"它真能检出"，以后规则被改坏也不知道。
+
+    返回 True 表示自检通过。
+    """
+    should_hit = [
+        ("厂商前缀 sk-", "sk-abcdefghijklmnopqrstuvwxyz012345"),
+        ("厂商前缀 ghp_", "ghp_abcdefghijklmnopqrstuvwxyz012345"),
+        ("通用赋值 api_key", "api_key = 'abcdefghijklmnop123456'"),
+        ("通用赋值 password", 'password: "Sup3rS3cretPwd12345"'),
+        ("连接串密码(云库)", "postgresql://u:npg_REDACTED_BY_FILTER@ep-x.neon.tech/db"),
+        ("连接串密码(mysql)", "mysql://root:Sup3rS3cretPwd@db.example.com:3306/app"),
+    ]
+    should_miss = [
+        ("打码连接串", "postgresql://u:***@ep-x.neon.tech/db"),
+        ("本地默认口令", "postgresql://postgres:postgres@localhost:5432/db"),
+        ("占位符密码", "postgresql://user:password@ep-x.neon.tech/db"),
+        ("无密码连接串", "postgresql://neondb_owner@ep-x.neon.tech/db"),
+    ]
+
+    ok = True
+    print("── 自检：注入样本验证各口径 ──")
+    for label, sample in should_hit:
+        hits = _scan_text(sample, "selfcheck", "selfcheck")
+        good = bool(hits)
+        ok = ok and good
+        print(f"   {'✅' if good else '❌'} 应检出: {label}")
+    for label, sample in should_miss:
+        hits = _scan_text(sample, "selfcheck", "selfcheck")
+        good = not hits
+        ok = ok and good
+        print(f"   {'✅' if good else '❌'} 应豁免: {label}")
+    print(f"   自检结果: {'通过' if ok else '未通过 —— 扫描规则可能已失效'}")
+    print()
+    return ok
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="宽口径密钥扫描（W-04）")
     ap.add_argument("--quick", action="store_true", help="跳过 base64 解码二次扫描")
     ap.add_argument("--json", metavar="PATH", help="输出 JSON 报告")
+    ap.add_argument("--no-selfcheck", action="store_true", help="跳过扫描器自检")
     args = ap.parse_args()
 
     print("=" * 74)
@@ -254,8 +362,13 @@ def main() -> int:
     print("=" * 74)
     print("口径 1 厂商前缀 : (sk-|ghp_|xoxb-|AKIA|AIza|eyJ)[A-Za-z0-9_\\-]{12,}")
     print("口径 2 通用赋值 : (api[_-]?key|secret|token|password)['\"]?\\s*[:=]\\s*['\"][A-Za-z0-9_\\-.]{16,}")
+    print("口径 3 连接串密码: (postgres|mysql|mongodb|redis...)://user:pass@<非本地主机>")
     print(f"base64 二次扫描 : {'关闭（--quick）' if args.quick else '开启'}")
     print()
+
+    selfcheck_ok = True
+    if not args.no_selfcheck:
+        selfcheck_ok = _self_check()
 
     print("[1/2] 扫工作树 …")
     work_hits = scan_worktree()
@@ -301,6 +414,10 @@ def main() -> int:
     if real:
         print("\n❌ 发现疑似泄漏，请人工确认后再 push。")
         return 1
+    if not selfcheck_ok:
+        # 自检没过 = 扫描规则本身失效了，"0 命中"没有意义，必须让人知道
+        print("\n❌ 扫描器自检未通过 —— 扫描规则可能已失效，本次「0 命中」不可信。")
+        return 2
     print("\n✅ 未发现真泄漏候选。")
     return 0
 
