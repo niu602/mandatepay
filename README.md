@@ -291,6 +291,30 @@ LLM_API_KEY=...             # 任意 OpenAI 兼容端点
 细节、平台选型依据（含三次走弯路的记录）、银联卡可行性、F1 额度核算、验收清单见
 **[W06_DEPLOY.md](W06_DEPLOY.md)**。
 
+### 保温与预热（Azure F1 必读）
+
+F1 **不支持 Always On**（闲置后实例可能被卸载，首访走冷启动），
+但只有 **60 CPU 分钟/天**硬上限 —— 所以保温必须低频，且**探针要跑在实例外面**。
+
+```bash
+# 保温（常驻，跑在自己机器上；30 分钟一次 ≈ 1.5 CPU 分钟/天）
+python scripts/keep_warm.py --url https://<你的域名>.azurewebsites.net
+
+# 演示前预热（录制 / 答辩前 5 分钟跑一次）
+python scripts/keep_warm.py --url https://<你的域名>.azurewebsites.net --warm
+
+# 冷启动耗时测量（部署后验收）
+python scripts/keep_warm.py --url https://<你的域名>.azurewebsites.net --measure
+
+# 部署后自检：确认 /budget 走 CDN 回退而非本地 7MB vendor
+python scripts/keep_warm.py --url https://<你的域名>.azurewebsites.net --check-cdn
+
+# CPU 预算核算表（不需要 URL）
+python scripts/keep_warm.py --budget
+```
+
+完整说明见 **[W07_KEEP_WARM.md](W07_KEEP_WARM.md)**。
+
 ## API
 
 | 方法 | 路径 | 说明 |
@@ -312,6 +336,7 @@ LLM_API_KEY=...             # 任意 OpenAI 兼容端点
 | GET | `/api/catalog` | 供应商目录 / SaaS 订阅计划 |
 | GET | `/api/webhook/events` | Webhook 事件审计日志 |
 | GET | `/api/health` | 健康检查（含 `db_backend`、webhook 配置状态） |
+| GET | `/healthz` | **轻量存活探针**：零 DB 零 PayPal，供平台健康检查与保温探针使用 |
 
 ## AI 决策参与点（本周新增）
 

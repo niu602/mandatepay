@@ -26,7 +26,10 @@ services:
     region: oregon
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /api/health
+    # 健康检查用 /healthz（零 DB 零 PayPal 的轻量存活探针），
+    # 而不是 /api/health —— 后者会 import agent.store 并报告后端类型，
+    # 对"服务是否活着"这个判断是多余开销。W-07 加的端点。
+    healthCheckPath: /healthz
     autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
