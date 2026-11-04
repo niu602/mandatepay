@@ -338,6 +338,24 @@ python scripts/keep_warm.py --budget
 | GET | `/api/health` | 健康检查（含 `db_backend`、webhook 配置状态） |
 | GET | `/healthz` | **轻量存活探针**：零 DB 零 PayPal，供平台健康检查与保温探针使用 |
 
+### 鉴权（W-08）
+
+`/api/*` 需要**会话 cookie**；页面路由与 `/healthz` 豁免。
+页面打开时自动签发 cookie，前端 fetch 同源自动携带 —— **前端零改动**。
+
+```bash
+# 裸请求被挡
+curl -i https://<你的域名>/api/mandates        # → 401
+
+# 先访问页面拿 cookie，再调 API 即可
+curl -c cookies.txt https://<你的域名>/audit
+curl -b cookies.txt https://<你的域名>/api/mandates   # → 200
+```
+
+签名密钥用 `SESSION_SECRET`（**公网部署建议必配**，不配会退化为从
+`PAYPAL_CLIENT_SECRET` 派生 —— 那样轮换 PayPal 凭据会连带让会话失效）。
+详见 **[W08_API_AUTH.md](W08_API_AUTH.md)**。
+
 ## AI 决策参与点（本周新增）
 
 状态机从五节点扩到**七节点**，新增两个由 LLM 驱动的节点，让 AI 不只在入口"听一句话"，而是参与每一次决策：
