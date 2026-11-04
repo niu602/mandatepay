@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import config, paypal_client
+from . import config, paypal_client, session
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -44,6 +44,92 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="MandatePay — 带约束的 AI 支付执行层", lifespan=lifespan)
+
+# ──────────────────────────────────────────────────────
+# W-08 · 会话鉴权
+# ──────────────────────────────────────────────────────
+# 为什么用 cookie session 而不是 header 凭据：五个前端页面的 fetch 全部无凭据
+# （实测 11 处），页面路由本身不提供数据。header 方案一上就是"页面空 + 按钮 401"，
+# 直接砸掉演示。cookie 方案下页面路由下发签名 cookie，页面内 fetch 同源自动带上，
+# 前端代码一行不用改。
+#
+# 豁免清单是**显式**的，不是"凡 /api/* 全拦"：
+#   - 页面路由：不鉴权（否则评委打不开）
+#   - /healthz：不鉴权（外部保温探针不能带凭据）
+#   - /api/webhook：**必须豁免** —— PayPal 是服务器对服务器调用，
+#     不可能带浏览器 cookie。它自己有 PayPal 官方签名校验（失败返 401），
+#     那才是这条路径正确的防护。
+#   - /static/*：静态资源（页面要能加载）
+EXEMPT_PATHS = frozenset({
+    "/",
+    "/constraints",
+    "/budget",
+    "/approvals",
+    "/audit",
+    "/healthz",
+    # /api/health 也豁免 —— 它是给人排查配置用的诊断端点，
+    # 且工单 DoD 明确要求「curl -i /healthz → 200」时可能连带用 /api/health 对照。
+    # 它不返回任何交易数据，暴露 db_backend / paypal_mode 无安全风险。
+    "/api/health",
+    # ⚠️ /api/webhook 必须豁免 —— PayPal 是服务器对服务器调用，
+    # 不可能带浏览器 cookie。它自己有 PayPal 官方签名校验（失败返 401），
+    # 那才是这条路径正确的防护。**若误拦，PayPal 事件永远收不到，
+    # mandate 状态不会更新** —— 这是 W-08 最容易踩的坑。
+    "/api/webhook",
+    "/favicon.ico",
+})
+
+# 页面路由 —— 访问时下发会话 cookie
+SESSION_ISSUING_PATHS = frozenset({"/", "/constraints", "/budget", "/approvals", "/audit"})
+
+
+@app.middleware("http")
+async def session_auth(request: Request, call_next):
+    """给 `/api/*` 加会话校验（cookie session）。
+
+    只拦 `/api/*`（除豁免清单），页面路由与静态资源不动 ——
+    这样前端一行不用改，而裸 curl 打 API 会被挡成 401。
+    """
+    path = request.url.path
+
+    # 静态资源直接放行（页面要能加载 CSS/JS）
+    if path.startswith("/static/"):
+        return await call_next(request)
+
+    if path.startswith("/api/") and path not in EXEMPT_PATHS:
+        cookie_header = request.headers.get("cookie")
+        if not session.verify_cookie(cookie_header, user_agent=request.headers.get("user-agent")):
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "detail": "需要有效的会话 cookie。请先访问首页取得会话。",
+                    "hint": "open the page root first, then retry",
+                },
+            )
+
+    response = await call_next(request)
+
+    # 页面路由：下发会话 cookie（签发）
+    if path in SESSION_ISSUING_PATHS:
+        # 有反向代理时，request.url.scheme 可能仍是 http，
+        # 所以 Secure 标记看 X-Forwarded-Proto（Azure App Service 会带）。
+        forwarded = request.headers.get("x-forwarded-proto", "")
+        is_https = request.url.scheme == "https" or forwarded.split(",")[0].strip() == "https"
+        cookie_name, cookie_value = session.issue_cookie_parts(
+            user_agent=request.headers.get("user-agent"),
+            secure=is_https,
+        )
+        response.set_cookie(
+            key=cookie_name,
+            value=cookie_value,
+            max_age=session.SESSION_TTL_SECONDS,
+            httponly=True,
+            samesite="lax",
+            secure=is_https,
+            path="/",
+        )
+
+    return response
 
 # 挂载 /static —— 两个用途：
 # 1. /budget 页面的 AG Studio 运行时探测 `/static/vendor/ag-studio.mjs`，

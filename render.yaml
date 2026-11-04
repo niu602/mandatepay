@@ -46,6 +46,12 @@ services:
         sync: false
       - key: PAYPAL_WEBHOOK_ID
         sync: false
+      # ── 会话签名密钥（W-08 鉴权）─────────────────────
+      # 不配也能跑（会从 PAYPAL_CLIENT_SECRET 派生），但配了更干净 ——
+      # 避免将来轮换 PayPal 凭据时连带让所有会话失效。
+      # 生成：python -c "import secrets; print(secrets.token_urlsafe(48))"
+      - key: SESSION_SECRET
+        sync: false
       # ── LLM（任意 OpenAI 兼容端点）────────────────────────
       - key: LLM_API_KEY
         sync: false
