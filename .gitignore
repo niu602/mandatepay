@@ -47,3 +47,8 @@ static/vendor/
 
 # ── 验证脚本的断点续跑中间状态（非交付物）──────────────
 .verify_state.json
+
+# ── 保温探针的测量输出（每次部署后重测，不是交付物）──────
+# 由 `python scripts/keep_warm.py --measure` 生成。
+# 真实耗时数据应该贴进 W07_KEEP_WARM.md 的验收表，而不是留在 JSON 里。
+cold_start_measure.json

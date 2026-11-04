@@ -294,6 +294,28 @@ def list_webhook_events(limit: int = 50):
     return {"items": store.list_webhook_events(limit=limit)}
 
 
+@app.get("/healthz")
+def healthz():
+    """轻量存活探针 —— 供外部 pinger 与演示前预热使用。
+
+    **刻意做到最轻**：不查库、不调 PayPal、甚至不import `agent.store`
+    （`/api/health` 为了报告 db_backend 导入了 store，这个导入链会拉起
+    psycopg / dotenv 等模块）。这里只用 FastAPI 自身 + 标准库。
+
+    为什么需要它而不是直接用 `/api/health`：
+    1. **Azure App Service F1 不支持 Always On** —— 闲置后实例可能被卸载，
+       首访要走冷启动（2-5 CPU 秒）。F1 有 **60 CPU 分钟/天硬上限**，
+       所以保温必须是"低频"，而低频探针本身必须便宜到可以忽略。
+    2. 冷启动预热时需要确认"服务真的起来了"，`/api/health` 返回体里
+       混了PayPal 配置与订阅事件，对存活判断是噪音。
+    3. 未来若给 `/api/*` 加鉴权（W-08），本端点会与页面路由一起被排除在
+       鉴权之外 —— 探针不能带凭据。
+
+    返回体刻意保持极小：pinger 每 30 分钟打一次，返回体越小越好。
+    """
+    return {"status": "ok"}
+
+
 @app.get("/api/health")
 def health():
     """健康检查：确认服务在跑、当前数据库后端与订阅事件。"""

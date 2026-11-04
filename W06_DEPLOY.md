@@ -322,7 +322,9 @@ F1 限制：**60 CPU 分钟/天**、1GB 内存、165MB 带宽/天。三项逐一
 
 ---
 
-## 六、冷启动耗时记录
+## 六、冷启动与保温（W-07）
+
+### 6.1 冷启动耗时记录
 
 | 场景 | 耗时 | 备注 |
 |---|---|---|
@@ -330,8 +332,46 @@ F1 限制：**60 CPU 分钟/天**、1GB 内存、165MB 带宽/天。三项逐一
 | 首次访问（冷） | 待填 | App Service 实例启动 + 应用初始化 |
 | 二次访问（热） | 待填 | F1 实例复用，预期 <1 秒 |
 
-> F1 不像 Render/Railway 那样 15 分钟强制休眠（Azure 的空闲回收更宽松），
-> 但仍可能有冷启动。**演示前自己访问一次预热**。
+**测量方法**（部署后跑）：
+
+```bash
+python scripts/keep_warm.py --url https://<你的域名>.azurewebsites.net --measure
+```
+
+连打 3 次 `/healthz`，输出「首访耗时 vs 热实例耗时」的对比，
+并写入 `cold_start_measure.json` —— 填进上表。
+
+### 6.2 保温策略（F1 不支持 Always On）
+
+F1 **不支持 Always On**：闲置后实例可能被平台卸载，首访走冷启动（实测 2-5 CPU 秒）。
+但 F1 有 **60 CPU 分钟/天硬上限**，所以保温必须低频。
+
+**采用：单个外部探针 / 30 分钟**（约 1.5 CPU 分钟/天，占预算 2.5%）。
+探针**必须跑在 F1 实例外面**（跑在实例里的话，实例卸载时探针一起没了）。
+
+```bash
+# 保温（常驻，跑在自己机器上）
+python scripts/keep_warm.py --url https://<你的域名>.azurewebsites.net
+
+# 演示前预热（录制/答辩前 5 分钟）
+python scripts/keep_warm.py --url https://<你的域名>.azurewebsites.net --warm
+
+# 部署后自检：确认 AG Studio 走 CDN 而非本地 7MB vendor
+python scripts/keep_warm.py --url https://<你的域名>.azurewebsites.net --check-cdn
+
+# CPU 预算核算（不需要 URL）
+python scripts/keep_warm.py --budget
+```
+
+完整说明见 **[W07_KEEP_WARM.md](W07_KEEP_WARM.md)**。
+
+### 6.3 部署后自检清单
+
+- [ ] `/healthz` 返回 200（`curl -i <域名>/healthz`）
+- [ ] 冷启动耗时已记录（首访 + 唤醒后各测一次）→ 填进 §6.1 表
+- [ ] `--check-cdn` 通过（`/static/vendor/ag-studio.mjs` 期望 404）
+- [ ] 演示前预热可用（`--warm` 全绿）
+- [ ] Azure Portal 配额页面当天用量 < 10 CPU 分钟
 
 **若冷启动 > 90 秒**，按工单顺序精简：
 1. `uvicorn[standard]` → 裸 `uvicorn`（去掉 httptools/uvloop/watchfiles 编译依赖）
