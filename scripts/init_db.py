@@ -26,7 +26,9 @@ def main() -> int:
         safe = dsn.split("@")[-1]  # 隐藏凭证，只打印 host/db
         print(f"连接目标: {safe}")
     else:
-        print(f"数据库文件: {store._DEFAULT_SQLITE}")
+        # 打印**实际生效**的路径，不是硬编码的默认值 ——
+        # DATABASE_URL 可能指向别处（如 sqlite:////tmp/x.db），打印默认值会误导人。
+        print(f"数据库文件: {store._sqlite_path()}")
 
     # 触发一次连接即完成建表（_Conn.__enter__ 执行 schema）
     with store._Conn() as db:
