@@ -129,12 +129,18 @@ Open **http://127.0.0.1:8888/** — you should see the PayPal sandbox payment pa
 # Automated sandbox payment loop (create → simulate approve → capture → assert COMPLETED)
 python -m agent.e2e_check --auto --amount 7.5
 
-# Constraint engine test suite (89 tests, ~2s, fully offline)
+# Constraint engine test suite (113 tests, ~2s, fully offline)
 python -m pytest tests/ -q
 
 # LLM intent parsing: 20 sentences × 3 runs, with degradation accounting
 python scripts/verify_llm_zai.py --repeat 3 --thinking disabled
 ```
+
+> **Already set up locally?** [STARTUP.md](STARTUP.md) is the developer quick
+> reference — one-screen start commands, the 30-second post-start self-check,
+> the day-to-day edit→verify→commit loop, Windows/Linux differences, and how to
+> clear leftover ports. This section is the first-time setup path; that one is
+> for day two.
 
 ---
 
@@ -472,6 +478,7 @@ mandatepay/
 ├── W06_DEPLOY.md                # deployment record + platform rationale
 ├── W07_KEEP_WARM.md             # F1 keep-warm / pre-warm handbook
 ├── W08_API_AUTH.md              # session auth design + DoD
+├── STARTUP.md                   # local dev quick reference (start / verify / troubleshoot)
 └── LICENSE                      # MIT (Copyright 2026 Niu Zisen)
 ```
 
