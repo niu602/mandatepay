@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MandatePay · 采购审批台</title>
+  <title>MandatePay · Approvals 采购审批台</title>
   <style>
     * { box-sizing:border-box; }
     body { font-family:"Microsoft YaHei", system-ui, sans-serif; max-width:1120px; margin:28px auto;
@@ -75,19 +75,19 @@
   </style>
 </head>
 <body>
-  <nav class="top"><a href="/constraints">· 约束设定</a><a href="/audit">· 审计日志</a><a href="/budget">· 预算仪表盘</a><a href="/">· 支付测试</a></nav>
-  <h1>MandatePay · 采购审批台</h1>
-  <div class="sub">Agent 在授权范围内自主下单，超过阈值的则停下来等人 —— 人拿最终否决权</div>
+  <nav class="top"><a href="/constraints">· Constraints 约束设定</a><a href="/audit">· Audit 审计日志</a><a href="/budget">· Budget 预算仪表盘</a><a href="/">· Pay 支付测试</a></nav>
+  <h1>MandatePay · Approvals 采购审批台</h1>
+  <div class="sub">The agent orders on its own inside the authorised scope; anything over the threshold stops and waits for a human — the human keeps the final veto · Agent 在授权范围内自主下单，超过阈值的则停下来等人 —— 人拿最终否决权</div>
 
   <div class="card">
-    <h2>采购请求</h2>
+    <h2>Purchase requests 采购请求</h2>
     <div class="tabs" id="tabs">
-      <button class="tab on" data-f="pending">待我审批</button>
-      <button class="tab" data-f="all">全部请求</button>
-      <button class="tab" data-f="COMPLETED">已完成</button>
-      <button class="tab" data-f="REJECTED">已拒绝</button>
+      <button class="tab on" data-f="pending">Needs me 待我审批</button>
+      <button class="tab" data-f="all">All requests 全部请求</button>
+      <button class="tab" data-f="COMPLETED">Completed 已完成</button>
+      <button class="tab" data-f="REJECTED">Rejected 已拒绝</button>
     </div>
-    <div id="list"><div class="empty">加载中……</div></div>
+    <div id="list"><div class="empty">Loading… 加载中……</div></div>
   </div>
 
 <div id="msg"></div>
@@ -95,7 +95,7 @@
 <!-- 审批弹窗 -->
 <div class="mask" id="mask">
   <div class="modal">
-    <div class="modal-h"><h3 id="mTitle">采购请求详情</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-h"><h3 id="mTitle">Purchase request details 采购请求详情</h3><button class="x" onclick="closeModal()">×</button></div>
     <div class="modal-b" id="mBody"></div>
     <div class="modal-f" id="mFoot"></div>
   </div>
@@ -111,7 +111,7 @@ async function loadList(){
   try{
     const d = await (await fetch('/api/approvals?status='+filter)).json();
     const items = d.items||[];
-    if(!items.length){ el.innerHTML = '<div class="empty">没有符合条件的请求</div>'; return; }
+    if(!items.length){ el.innerHTML = '<div class="empty">No matching requests 没有符合条件的请求</div>'; return; }
     el.innerHTML = items.map((m,i)=>{
       const pending = m.status==='PENDING_HUMAN';
       return `<div class="req">
@@ -122,7 +122,7 @@ async function loadList(){
           ${m.decision?`<span class="req-meta">${esc(m.decision)}</span>`:''}
           <span class="spacer"></span>
           <span class="req-meta">${esc((m.created_at||'').slice(0,19).replace('T',' '))}</span>
-          <span class="req-meta">${pending?'点击处理 ›':'详情 ›'}</span>
+          <span class="req-meta">${pending?'Click to handle › 点击处理 ›':'Details › 详情 ›'}</span>
         </div>
         <div class="req-foot">
           <span class="trace">${esc((m.cart||'').slice(0,60))}</span>
@@ -141,27 +141,27 @@ function openModal(i){
   const L = m.layers||{};
   const box = (name,cls,o)=> o ? `<div class="layer-box l-${cls}"><div class="lname">${name} · ${esc(o.status||'')}</div>
       <div class="ltext">${esc(o.content||'')}</div></div>` : `<div class="layer-box l-${cls}"><div class="lname">${name}</div><div class="ltext">—</div></div>`;
-  document.getElementById('mTitle').textContent = `${m.vendor||'采购'} · $${Number(m.amount_usd||0).toFixed(2)}`;
+  document.getElementById('mTitle').textContent = `${m.vendor||'Purchase 采购'} · $${Number(m.amount_usd||0).toFixed(2)}`;
   document.getElementById('mBody').innerHTML = `
     <div class="note">这笔请求超出 Agent 的单笔授权额度，因此<b>停下来等人确认</b>。你批准后 Agent 才继续，人始终握有最终授权权。</div>
     <div class="kv"><span class="k">供应商</span><span class="v">${esc(m.vendor||'—')}</span></div>
     <div class="kv"><span class="k">商品</span><span class="v">${esc(m.cart||'—')}</span></div>
     <div class="kv"><span class="k">金额</span><span class="v">$${Number(m.amount_usd||0).toFixed(2)}</span></div>
-    <div class="kv"><span class="k">引擎判定</span><span class="v">${esc(m.decision||'—')}</span></div>
-    <div class="kv"><span class="k">状态</span><span class="v"><span class="badge b-${String(m.status||'').toLowerCase()}">${esc(m.status)}</span></span></div>
+    <div class="kv"><span class="k">Engine verdict 引擎判定</span><span class="v">${esc(m.decision||'—')}</span></div>
+    <div class="kv"><span class="k">Status 状态</span><span class="v"><span class="badge b-${String(m.status||'').toLowerCase()}">${esc(m.status)}</span></span></div>
     <div class="kv"><span class="k">trace_id</span><span class="v">${esc(m.trace_id||'—')}</span></div>
     <div class="layers">
-      ${box('Intent 层','intent',L.intent)}${box('Cart 层','cart',L.cart)}${box('Payment 层','payment',L.payment)}
+      ${box('Intent layer 层','intent',L.intent)}${box('Cart layer 层','cart',L.cart)}${box('Payment layer 层','payment',L.payment)}
     </div>
-    ${m.order_id?`<div class="kv"><span class="k">PayPal 订单</span><span class="v">${esc(m.order_id)}</span></div>`:''}`;
+    ${m.order_id?`<div class="kv"><span class="k">PayPal order 订单</span><span class="v">${esc(m.order_id)}</span></div>`:''}`;
 
   const foot = document.getElementById('mFoot');
   const canPay = m.order_id && m.status!=='COMPLETED' && m.status!=='REJECTED';
   foot.innerHTML = `
-    ${canPay?`<a class="btn" href="https://www.sandbox.paypal.com/checkoutnow?token=${esc(m.order_id)}" target="_blank">① 去 PayPal 付款</a>`:''}
-    ${canPay?`<button class="btn gray" onclick="confirmPay()">② 我已付款·捕获</button>`:''}
-    ${m.status!=='COMPLETED'&&m.status!=='REJECTED'?`<button class="btn danger" onclick="rejectIt()">✕ 拒绝</button>`:''}
-    <button class="btn gray" onclick="closeModal()">关闭</button>`;
+    ${canPay?`<a class="btn" href="https://www.sandbox.paypal.com/checkoutnow?token=${esc(m.order_id)}" target="_blank">① Go to PayPal 去 PayPal 付款</a>`:''}
+    ${canPay?`<button class="btn gray" onclick="confirmPay()">② I have paid · capture 我已付款·捕获</button>`:''}
+    ${m.status!=='COMPLETED'&&m.status!=='REJECTED'?`<button class="btn danger" onclick="rejectIt()">✕ Reject 拒绝</button>`:''}
+    <button class="btn gray" onclick="closeModal()">Close 关闭</button>`;
   document.getElementById('mask').classList.add('on');
 }
 function closeModal(){ document.getElementById('mask').classList.remove('on'); current=null; }
@@ -169,24 +169,24 @@ document.getElementById('mask').addEventListener('click', e=>{ if(e.target.id===
 
 async function confirmPay(){
   if(!current) return;
-  const msg=document.getElementById('msg'); msg.className=''; msg.textContent='捕获中……';
+  const msg=document.getElementById('msg'); msg.className=''; msg.textContent='Capturing… 捕获中……';
   try{
     const d = await (await fetch('/api/mandates/confirm',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({order_id:current.order_id, mandate_uuid:current.mandate_uuid})})).json();
     msg.className = d.completed?'ok':'err';
-    msg.textContent = d.completed ? `✅ 闭环完成 —— capture ${d.capture_id}` : `未捕获成功（状态 ${d.status}）。请确认已在 PayPal 点完「完成购买」。`;
+    msg.textContent = d.completed ? `✅ Loop closed — capture ${d.capture_id} · 闭环完成` : `Not captured (status ${d.status}). Confirm you completed "Pay now" on PayPal. · 未捕获成功`;
     closeModal(); loadList();
-  }catch(e){ msg.className='err'; msg.textContent='捕获失败: '+e; }
+  }catch(e){ msg.className='err'; msg.textContent='Capture failed: '+e+' · 捕获失败'; }
 }
 
 async function rejectIt(){
   if(!current) return;
-  const msg=document.getElementById('msg'); msg.className=''; msg.textContent='拒绝中……';
+  const msg=document.getElementById('msg'); msg.className=''; msg.textContent='Rejecting… 拒绝中……';
   try{
     const d = await (await fetch(`/api/approvals/${encodeURIComponent(current.trace_id)}/reject`,{method:'POST'})).json();
-    msg.className='ok'; msg.textContent=`✕ 已拒绝（更新 ${d.updated} 条分层记录）`;
+    msg.className='ok'; msg.textContent=`✕ Rejected (updated ${d.updated} layer records) · 已拒绝`;
     closeModal(); loadList();
-  }catch(e){ msg.className='err'; msg.textContent='拒绝失败: '+e; }
+  }catch(e){ msg.className='err'; msg.textContent='Reject failed: '+e+' · 拒绝失败'; }
 }
 
 document.getElementById('tabs').addEventListener('click', e=>{

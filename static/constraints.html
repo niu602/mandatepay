@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MandatePay · 约束设定</title>
+  <title>MandatePay · Constraints 约束设定</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -73,21 +73,22 @@
   </style>
 </head>
 <body>
-  <nav class="top"><a href="/audit">· 审计日志</a><a href="/">· 支付测试</a></nav>
-  <h1>MandatePay · 约束设定</h1>
-  <div class="sub">用自然语言告诉 Agent「怎么花钱」，它会解析成结构化规则，并在每次决策时给出洞察与解释</div>
+  <nav class="top"><a href="/audit">· Audit 审计日志</a><a href="/">· Pay 支付测试</a></nav>
+  <h1>MandatePay · Constraints 约束设定</h1>
+  <div class="sub">Tell the agent how to spend money in plain English — it parses that into structured rules, then explains every decision · 用自然语言告诉 Agent「怎么花钱」，它会解析成结构化规则，并在每次决策时给出洞察与解释</div>
 
   <div class="note">
-    <b>两处 AI 参与：</b>① 下面输入一句话设定约束，AI 解析成结构化规则；
-    ② 在「消费洞察 / 决策解释」里试一笔采购，AI 会先算预算处境给出<b>洞察</b>，再对判定给出<b>可操作解释</b>。
+    <b>Two places the AI takes part · 两处 AI 参与：</b>
+    ① Type one sentence below to set your constraints — the AI parses it into structured rules.<br>
+    ② In the <b>Insight / Explanation</b> panel, try a purchase — the AI first works out your budget position, then gives an <b>insight</b>, then an <b>actionable explanation</b> for the verdict.
   </div>
 
   <!-- ① 约束设定 -->
   <div class="card">
-    <h2>① 用自然语言设定约束</h2>
-    <div class="hint">例：「每月 SaaS 预算 200 美元，单笔超过 50 要先问我，只允许买 Notion 和 Figma」</div>
-    <textarea id="cText" rows="2" placeholder="用一句话描述你的花钱约束…">每月 SaaS 预算 200 美元，单笔超过 50 要先问我，只允许买 Notion 和 Figma</textarea>
-    <div class="row"><button class="btn" onclick="setConstraint()">解析并设定约束</button></div>
+    <h2>① Set constraints in plain English · 用自然语言设定约束</h2>
+    <div class="hint">e.g. "SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma" · 例：「每月 SaaS 预算 200 美元，单笔超过 50 要先问我，只允许买 Notion 和 Figma」</div>
+    <textarea id="cText" rows="2" placeholder="Describe your spending constraints in one sentence… · 用一句话描述你的花钱约束…">SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma</textarea>
+    <div class="row"><button class="btn" onclick="setConstraint()">Parse &amp; set constraints · 解析并设定约束</button></div>
     <div id="cMsg" class="msg"></div>
     <div id="rules" style="display:none">
       <div class="rules" id="ruleCards"></div>
@@ -96,15 +97,15 @@
 
   <!-- ② 消费洞察 / 决策解释 -->
   <div class="card">
-    <h2>② 消费洞察 / 决策解释（试一笔采购）</h2>
-    <div class="hint">例：「帮我买 Notion Pro，10 美元」或「买 Slack Pro，15 美元」（会被白名单拦截并给出解释）</div>
-    <input type="text" id="pText" placeholder="描述一笔采购，例：帮我买 Notion Pro，10 美元" value="帮我买 Notion Pro，10 美元">
-    <div class="row"><button class="btn" onclick="tryPurchase()">让 Agent 处理</button></div>
+    <h2>② Insight / Explanation — try a purchase · 消费洞察 / 决策解释（试一笔采购）</h2>
+    <div class="hint">e.g. "Buy Notion Pro for 10 dollars" or "Buy Slack Pro for 15 dollars" (blocked by the allowlist, with an explanation) · 例：「帮我买 Notion Pro，10 美元」或「买 Slack Pro，15 美元」（会被白名单拦截并给出解释）</div>
+    <input type="text" id="pText" placeholder="Describe a purchase, e.g. Buy Notion Pro for 10 dollars · 描述一笔采购，例：帮我买 Notion Pro，10 美元" value="Buy Notion Pro for 10 dollars">
+    <div class="row"><button class="btn" onclick="tryPurchase()">Let the agent handle it · 让 Agent 处理</button></div>
     <div id="pMsg" class="msg"></div>
     <div id="pOut" style="display:none">
       <div style="margin-top:12px"><span id="pBadge"></span></div>
-      <div class="ai" id="insightBox"><span class="tag">💡 消费洞察</span><div id="insightText"></div></div>
-      <div class="ai" id="explainBox"><span class="tag">🧭 决策解释</span><div id="explainText"></div></div>
+      <div class="ai" id="insightBox"><span class="tag">💡 Insight 消费洞察</span><div id="insightText"></div></div>
+      <div class="ai" id="explainBox"><span class="tag">🧭 Explanation 决策解释</span><div id="explainText"></div></div>
       <div id="payDetail"></div>
     </div>
   </div>
@@ -114,77 +115,77 @@ function cls(d){
   return d==="AUTO_APPROVE"?"b-auto":d==="REQUIRE_HUMAN"?"b-human":d==="REJECT"?"b-reject":"b-set";
 }
 function label(d){
-  return {AUTO_APPROVE:"自动通过",REQUIRE_HUMAN:"需人工确认",REJECT:"已拦截",PARSED_CONSTRAINT:"约束已设定"}[d]||d||"";
+  return {AUTO_APPROVE:"Auto-approved 自动通过",REQUIRE_HUMAN:"Needs human 需人工确认",REJECT:"Blocked 已拦截",PARSED_CONSTRAINT:"Constraints set 约束已设定"}[d]||d||"";
 }
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
 async function setConstraint(){
   const text = document.getElementById("cText").value.trim();
   const msg = document.getElementById("cMsg");
-  if(!text){ msg.className="msg err"; msg.textContent="请先输入约束描述"; return; }
-  msg.className="msg spin"; msg.textContent="AI 解析中…（function calling → 结构化规则）";
+  if(!text){ msg.className="msg err"; msg.textContent="Please describe your constraints first · 请先输入约束描述"; return; }
+  msg.className="msg spin"; msg.textContent="AI parsing… (function calling → structured rules) · AI 解析中…";
   try{
     const r = await fetch("/api/agent/parse",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({text, session_id:"web-constraint"})});
     const d = await r.json();
     if(d.decision!=="PARSED_CONSTRAINT"){
       msg.className="msg err";
-      msg.textContent="没识别成约束设定（decision="+d.decision+"）。试试用「预算 / 阈值 / 白名单」等词。";
+      msg.textContent='Not recognised as a constraint (decision='+d.decision+'). Try wording like "budget / threshold / allowlist". · 没识别成约束设定';
       return;
     }
     const c = d.constraint;
-    msg.className="msg ok"; msg.textContent="✓ 约束已保存，以下是 AI 解析出的结构化规则：";
+    msg.className="msg ok"; msg.textContent="✓ Constraints saved — here are the structured rules the AI parsed · 约束已保存";
     const cards = [
-      ["月度预算", "$"+(c.monthly_budget_usd??0)],
-      ["单笔阈值", "$"+(c.single_tx_threshold_usd??0)],
-      ["日累计阈值", c.daily_threshold_usd?("$"+c.daily_threshold_usd):"不限"],
+      ["Monthly budget 月度预算", "$"+(c.monthly_budget_usd??0)],
+      ["Per-transaction threshold 单笔阈值", "$"+(c.single_tx_threshold_usd??0)],
+      ["Daily cumulative threshold 日累计阈值", c.daily_threshold_usd?("$"+c.daily_threshold_usd):"none 不限"],
     ];
     let html = cards.map(([k,v])=>`<div class="rule"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join("");
-    html += `<div class="rule"><div class="k">供应商白名单</div><div class="chips">${
-      (c.vendor_whitelist&&c.vendor_whitelist.length)?c.vendor_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty">不限</span>`}</div></div>`;
-    html += `<div class="rule"><div class="k">品类白名单</div><div class="chips">${
-      (c.category_whitelist&&c.category_whitelist.length)?c.category_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty">不限</span>`}</div></div>`;
+    html += `<div class="rule"><div class="k">Vendor allowlist 供应商白名单</div><div class="chips">${
+      (c.vendor_whitelist&&c.vendor_whitelist.length)?c.vendor_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty">none 不限</span>`}</div></div>`;
+    html += `<div class="rule"><div class="k">Category allowlist 品类白名单</div><div class="chips">${
+      (c.category_whitelist&&c.category_whitelist.length)?c.category_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty">none 不限</span>`}</div></div>`;
     document.getElementById("ruleCards").innerHTML = html;
     document.getElementById("rules").style.display="block";
-  }catch(e){ msg.className="msg err"; msg.textContent="请求失败："+e; }
+  }catch(e){ msg.className="msg err"; msg.textContent="Request failed: "+e+" · 请求失败"; }
 }
 
 async function tryPurchase(){
   const text = document.getElementById("pText").value.trim();
   const msg = document.getElementById("pMsg");
-  if(!text){ msg.className="msg err"; msg.textContent="请先描述一笔采购"; return; }
-  msg.className="msg spin"; msg.textContent="Agent 处理中…（校验 → 洞察 → 解释 → 审批）";
+  if(!text){ msg.className="msg err"; msg.textContent="Please describe a purchase first · 请先描述一笔采购"; return; }
+  msg.className="msg spin"; msg.textContent="Agent working… (validate → insight → explain → approve) · Agent 处理中…";
   document.getElementById("pOut").style.display="none";
   try{
     const r = await fetch("/api/agent/parse",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({text, session_id:"web-purchase-"+Date.now()})});
     const d = await r.json();
     document.getElementById("pBadge").innerHTML = `<span class="badge ${cls(d.decision)}">${label(d.decision)}</span>`;
-    document.getElementById("insightText").textContent = d.insight || "（本次未生成洞察）";
-    document.getElementById("explainText").textContent = d.explanation || "（本次未生成解释）";
+    document.getElementById("insightText").textContent = d.insight || "No insight generated this time （本次未生成洞察）";
+    document.getElementById("explainText").textContent = d.explanation || "No explanation generated this time （本次未生成解释）";
 
     let det = "";
     const spend = d.spend||{};
-    det += `<div class="kv"><div class="k">引擎原始原因</div><div class="v">${esc(d.reason||d.error||"—")}</div></div>`;
-    det += `<div class="kv"><div class="k">本月已花费</div><div class="v">$${Number(spend.monthly_usd||0).toFixed(2)}</div></div>`;
+    det += `<div class="kv"><div class="k">Engine reason 引擎原始原因</div><div class="v">${esc(d.reason||d.error||"—")}</div></div>`;
+    det += `<div class="kv"><div class="k">Spent this month 本月已花费</div><div class="v">$${Number(spend.monthly_usd||0).toFixed(2)}</div></div>`;
     const pr = d.payment_result;
     if(pr){
       if(pr.status==="SKIPPED"){
-        det += `<div class="kv"><div class="k">支付</div><div class="v">未创建订单（${esc(pr.reason||"被拦截"||"")}）</div></div>`;
+        det += `<div class="kv"><div class="k">Payment 支付</div><div class="v">No order created (${esc(pr.reason||"blocked 被拦截"||"")}) · 未创建订单</div></div>`;
       }else{
-        det += `<div class="kv"><div class="k">订单</div><div class="v">${esc(pr.order_id)}（${esc(pr.status)}）</div></div>`;
-        if(pr.approval_url) det += `<div class="kv"><div class="k">去付款</div><div class="v"><a class="link" target="_blank" href="${esc(pr.approval_url)}">打开 PayPal 付款页</a></div></div>`;
+        det += `<div class="kv"><div class="k">Order 订单</div><div class="v">${esc(pr.order_id)}（${esc(pr.status)}）</div></div>`;
+        if(pr.approval_url) det += `<div class="kv"><div class="k">Go to PayPal 去付款</div><div class="v"><a class="link" target="_blank" href="${esc(pr.approval_url)}">Open the PayPal checkout 打开 PayPal 付款页</a></div></div>`;
       }
     }
     const m = d.mandate;
     if(m){
       const layers = (m.layers||[]).map(L=>`<span class="chip">${esc(L.layer)}: ${esc(L.status)}</span>`).join("");
-      det += `<div class="kv"><div class="k">三层 Mandate</div><div class="v"><div class="chips">${layers}</div></div></div>`;
+      det += `<div class="kv"><div class="k">Three-layer Mandate 三层 Mandate</div><div class="v"><div class="chips">${layers}</div></div></div>`;
     }
     document.getElementById("payDetail").innerHTML = det;
     document.getElementById("pOut").style.display="block";
-    msg.className="msg ok"; msg.textContent="✓ 处理完成（见下方 AI 洞察与解释）";
-  }catch(e){ msg.className="msg err"; msg.textContent="请求失败："+e; }
+    msg.className="msg ok"; msg.textContent="✓ Done — see the AI insight and explanation below · 处理完成";
+  }catch(e){ msg.className="msg err"; msg.textContent="Request failed: "+e+" · 请求失败"; }
 }
 </script>
 </body>

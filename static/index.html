@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PayPal Sandbox 支付测试</title>
+  <title>PayPal Sandbox Checkout Test · PayPal 沙箱支付测试</title>
   <style>
     body { font-family: "Microsoft YaHei", system-ui, sans-serif; max-width: 560px; margin: 48px auto; padding: 0 16px; color: #1a2433; }
     h1 { font-size: 22px; color: #003087; }
@@ -11,10 +11,10 @@
   </style>
 </head>
 <body>
-  <h1>PayPal Sandbox 集成骨架</h1>
-  <p>金额：$10.00 USD（可在 /api/create-order 入参中修改）</p>
+  <h1>PayPal Sandbox Integration Skeleton · 集成骨架</h1>
+  <p>Amount: $10.00 USD (change it in the /api/create-order request body) · 金额：$10.00 USD（可在 /api/create-order 入参中修改）</p>
   <div id="paypal-button-container"></div>
-  <div id="status">等待支付……</div>
+  <div id="status">Waiting for payment… · 等待支付……</div>
 
   <!-- 官方 JS SDK：client-id 由后端从 .env 注入 -->
   <script src="https://www.paypal.com/sdk/js?client-id={{CLIENT_ID}}&currency=USD&intent=capture"></script>
@@ -27,17 +27,17 @@
           body: JSON.stringify({ amount: 10.0 })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "创建订单失败");
+        if (!res.ok) throw new Error(data.detail || "Failed to create order · 创建订单失败");
         return data.id;
       },
       onApprove: async (data) => {
         const res = await fetch(`/api/capture-order/${data.orderID}`, { method: "POST" });
         const result = await res.json();
         document.getElementById("status").textContent =
-          "支付状态: " + (result.status || JSON.stringify(result));
+          "Payment status: " + (result.status || JSON.stringify(result)) + " · 支付状态";
       },
       onError: (err) => {
-        document.getElementById("status").textContent = "错误: " + err;
+        document.getElementById("status").textContent = "Error: " + err + " · 错误";
       }
     }).render("#paypal-button-container");
   </script>

@@ -458,8 +458,13 @@ mandatepay/
 │   ├── constraints.html    # natural-language constraint setup
 │   ├── approvals.html      # approval desk
 │   ├── audit.html          # three-layer Mandate audit + human confirmation
-│   └── budget.html         # AG Studio dashboard (with classic fallback inside)
-├── tests/                  # 89 tests: constraint engine + session auth + keep-warm
+│   ├── budget.html         # AG Studio dashboard (with classic fallback inside)
+│   └── budget.orig.html    # ARCHIVED pre-AG-Studio snapshot (no route, not a live page)
+├── tests/                  # 113 tests: constraints + session auth + keep-warm + UI English
+├── scripts/
+│   ├── check_ui_english.py     # static check: no pure-Chinese visible blocks
+│   ├── check_ui_rendered.py    # headless-browser check: renders each page, verifies the same
+│   └── …                       # (see the full list above)
 ├── Dockerfile / Procfile / startup.sh / render.yaml   # deployment assets
 ├── LLM_INTENT_VERIFICATION.md   # 20 × 3 intent parsing report
 ├── STRESS_REPORT.md             # 650-judgement constraint stress report
@@ -469,6 +474,31 @@ mandatepay/
 ├── W08_API_AUTH.md              # session auth design + DoD
 └── LICENSE                      # MIT (Copyright 2026 Niu Zisen)
 ```
+
+---
+
+## UI language
+
+The five pages are **bilingual, English-first** — every visible string carries English,
+with the Chinese kept alongside it where it helps (this is a Chinese-voiceover demo with
+English subtitles, so the two are meant to sit together). **No visible block is
+Chinese-only.**
+
+Two checks enforce it, and both are cheap to run:
+
+```bash
+python scripts/check_ui_english.py     # static — reads the HTML source
+python scripts/check_ui_rendered.py    # headless Chrome — renders each page and checks the result
+```
+
+The second one exists because static analysis misses a real case: **Chinese that only
+appears after JavaScript runs** — e.g. AG Studio's KPI labels are pre-defined in
+`createStudio`/`setState`, not in HTML text nodes, and a `<span>` around the Chinese
+splits it into a separate text node that looks Chinese-only in the DOM but renders as
+one bilingual line. Rendering is the only way to be sure.
+
+`python -m pytest tests/test_ui_english.py` runs the static half as part of the
+normal suite.
 
 ---
 
