@@ -43,7 +43,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="MandatePay — 带约束的 AI 支付执行层", lifespan=lifespan)
+app = FastAPI(title="MandatePay — A Company Card for AI Agents", lifespan=lifespan)
 
 # ──────────────────────────────────────────────────────
 # W-08 · 会话鉴权

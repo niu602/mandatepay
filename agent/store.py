@@ -43,6 +43,59 @@ def _effective_dsn() -> str:
     return dsn
 
 
+def _sqlite_path() -> str:
+    """解析 SQLite 文件路径（跨平台）。
+
+    `DATABASE_URL` 支持三种写法：
+      - 空 → 用默认的 `mandatepay.db`（仓库根）
+      - `sqlite:///relative/path.db` → 相对路径（相对仓库根）
+      - `sqlite:////abs/path.db` / `sqlite:///D:/abs/path.db` → 绝对路径
+
+    **踩过的坑**：`sqlite:////tmp/x.db`（四个斜杠，Unix 绝对路径的惯用写法）
+    剥掉 `sqlite:///` 后剩下 `/tmp/x.db` —— 在 Windows 上这指的是
+    **当前盘符的根目录**（比如 `C:` 盘下的 tmp 目录），不存在就报
+    `unable to open database file`，错误信息完全看不出是路径问题。
+
+    处理方式：
+      - 绝对路径（以 `/` 或盘符开头）→ 去掉开头的 `/`，转成平台路径
+      - Windows 风格的 `D:/...` → 去掉开头的 `/`（`/D:/...` 是无效路径）
+      - 相对路径 → 相对仓库根解析（保证从任何 cwd 运行都指向同一个库）
+    """
+    dsn = _dsn()
+    if not dsn.startswith("sqlite:///"):
+        return str(_DEFAULT_SQLITE)
+
+    raw = dsn[len("sqlite:///"):]
+    if not raw:
+        return str(_DEFAULT_SQLITE)
+
+    # Windows 盘符写法：/D:/path → D:/path
+    if len(raw) >= 3 and raw[0] == "/" and raw[2] == ":":
+        raw = raw[1:]
+
+    # Unix 绝对路径：/tmp/x.db
+    # 在 Windows 上没有 "/" 根目录的概念，硬把它当相对路径会在**仓库里**建出
+    # tmp/ 目录（污染工作树）。所以映射到系统临时目录 —— 语义更接近，
+    # 也不会弄脏仓库。
+    if raw.startswith("/"):
+        stripped = raw.lstrip("/")
+        if not stripped:
+            return str(_DEFAULT_SQLITE)
+        import tempfile
+
+        path = Path(tempfile.gettempdir()) / stripped
+    else:
+        path = Path(raw)
+        if not path.is_absolute():
+            # 相对路径 → 相对仓库根，保证从任何 cwd 运行都指向同一个库
+            path = Path(__file__).resolve().parent.parent / path
+
+    # SQLite 不会自动创建父目录 —— 缺了就报
+    # "unable to open database file"（看不出是路径问题，容易误判）
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return str(path)
+
+
 # ── 建表语句 ────────────────────────────────────────────
 _SQLITE_SCHEMA = """
 CREATE TABLE IF NOT EXISTS constraints (
@@ -220,9 +273,7 @@ class _Conn:
 
             self._conn = psycopg.connect(_effective_dsn(), row_factory=psycopg.rows.dict_row)
         else:
-            dsn = _dsn()
-            path = dsn[len("sqlite:///"):] if dsn.startswith("sqlite:///") else str(_DEFAULT_SQLITE)
-            self._conn = sqlite3.connect(path)
+            self._conn = sqlite3.connect(_sqlite_path())
             self._conn.row_factory = sqlite3.Row
 
     def __enter__(self):
