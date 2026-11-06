@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MandatePay · 三层 Mandate 审计日志</title>
+  <title>MandatePay · Three-layer Mandate Audit 三层 Mandate 审计日志</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -71,24 +71,26 @@
   </style>
 </head>
 <body>
-  <nav class="top"><a href="/constraints">· 约束设定</a><a href="/budget">· 预算仪表盘</a><a href="/approvals">· 审批台</a><a href="/">· 支付测试</a></nav>
-  <h1>MandatePay · 三层 Mandate 审计日志</h1>
-  <div class="sub">每一笔交易都留下三层可追溯的授权记录：Intent（可以买什么）→ Cart（这次买什么）→ Payment（钱怎么扣）</div>
+  <nav class="top"><a href="/constraints">· Constraints 约束设定</a><a href="/budget">· Budget 预算仪表盘</a><a href="/approvals">· Approvals 审批台</a><a href="/">· Pay 支付测试</a></nav>
+  <h1>MandatePay · Three-layer Mandate Audit 三层 Mandate 审计日志</h1>
+  <div class="sub">Every transaction leaves three traceable authorisation records: Intent (what was allowed) → Cart (what was bought) → Payment (how the money moved) · 每一笔交易都留下三层可追溯的授权记录</div>
 
   <div class="note">
-    <b>为什么需要「人确认」？</b> Agent 下单后订单状态为 <code>PAYER_ACTION_REQUIRED</code>，
-    必须人去 PayPal 完成付款才能扣款 —— 这是 MandatePay 的安全设计，不是缺陷。
-    AI 不能偷偷花钱，最终授权权在人手里（人授权 + 机器执行）。
+    <b>Why does a human have to confirm? · 为什么需要「人确认」？</b> After the agent places an order the status is
+    <code>PAYER_ACTION_REQUIRED</code> — a human must complete the payment on PayPal before money moves.
+    That is MandatePay's security design, not a defect: the AI cannot spend behind your back,
+    and the final authorisation stays with the human (human authorises, machine executes).
+    · 这是 MandatePay 的安全设计，不是缺陷。AI 不能偷偷花钱，最终授权权在人手里。
   </div>
 
   <div class="card">
-    <h2>当前生效约束（Intent Mandate）</h2>
-    <div id="constraint">加载中……</div>
+    <h2>Active constraints (Intent Mandate) 当前生效约束</h2>
+    <div id="constraint">Loading… 加载中……</div>
   </div>
 
   <div class="card">
-    <h2>审计日志 <span id="totalHint" style="font-weight:400;color:#5a6b82;font-size:13px"></span></h2>
-    <div id="mandates"><div class="empty">加载中……</div></div>
+    <h2>Audit log 审计日志 <span id="totalHint" style="font-weight:400;color:#5a6b82;font-size:13px"></span></h2>
+    <div id="mandates"><div class="empty">Loading… 加载中……</div></div>
     <div class="pager" id="pager"></div>
   </div>
 
@@ -107,13 +109,13 @@ async function loadConstraint() {
     const el = document.getElementById('constraint');
     if (c.detail) { el.innerHTML = `<div class="empty">${esc(c.detail)}</div>`; return; }
     el.innerHTML = `
-      <div class="kv"><span class="k">月度滚动预算</span><span class="v">$${c.monthly_budget_usd}</span></div>
-      <div class="kv"><span class="k">单笔确认阈值</span><span class="v">$${c.single_tx_threshold_usd}</span></div>
-      <div class="kv"><span class="k">日累计阈值</span><span class="v">${c.daily_threshold_usd ? '$'+c.daily_threshold_usd : '不限'}</span></div>
-      <div class="kv"><span class="k">供应商白名单</span><span class="v">${esc((c.vendor_whitelist||[]).join(', ') || '不限')}</span></div>
-      <div class="kv"><span class="k">品类白名单</span><span class="v">${esc((c.category_whitelist||[]).join(', ') || '不限')}</span></div>`;
+      <div class="kv"><span class="k">Monthly budget 月度滚动预算</span><span class="v">$${c.monthly_budget_usd}</span></div>
+      <div class="kv"><span class="k">Per-transaction threshold 单笔确认阈值</span><span class="v">$${c.single_tx_threshold_usd}</span></div>
+      <div class="kv"><span class="k">Daily cumulative threshold 日累计阈值</span><span class="v">${c.daily_threshold_usd ? '$'+c.daily_threshold_usd : 'none 不限'}</span></div>
+      <div class="kv"><span class="k">Vendor allowlist 供应商白名单</span><span class="v">${esc((c.vendor_whitelist||[]).join(', ') || 'none 不限')}</span></div>
+      <div class="kv"><span class="k">Category allowlist 品类白名单</span><span class="v">${esc((c.category_whitelist||[]).join(', ') || 'none 不限')}</span></div>`;
   } catch (e) {
-    document.getElementById('constraint').innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`;
+    document.getElementById('constraint').innerHTML = `<div class="empty">Load failed: ${esc(e)} · 加载失败</div>`;
   }
 }
 
@@ -131,9 +133,9 @@ async function loadMandates() {
   try {
     const d = await (await fetch(`/api/mandates?limit=${PAGE_SIZE}&offset=${page*PAGE_SIZE}`)).json();
     total = d.total || 0;
-    document.getElementById('totalHint').textContent = `共 ${total} 笔交易 · 第 ${page+1} 页`;
+    document.getElementById('totalHint').textContent = `${total} transactions · page ${page+1} · 共 ${total} 笔交易`;
     if (!d.items || !d.items.length) {
-      el.innerHTML = `<div class="empty">${page>0?'本页为空':'暂无记录'}</div>`;
+      el.innerHTML = `<div class="empty">${page>0?'This page is empty 本页为空':'No records 暂无记录'}</div>`;
       renderPager(); return;
     }
     el.innerHTML = d.items.map(m => {
@@ -141,7 +143,7 @@ async function loadMandates() {
       const canConfirm = m.order_id && m.status !== 'COMPLETED' && m.status !== 'REJECTED';
       const action = canConfirm
         ? `<a class="btn btn-sm" href="https://www.sandbox.paypal.com/checkoutnow?token=${esc(m.order_id)}" target="_blank">去确认付款</a>
-           <button class="btn btn-sm gray" onclick="confirmPay('${esc(m.order_id)}','${esc(m.mandate_uuid)}')">我已付款·捕获</button>`
+           <button class="btn btn-sm gray" onclick="confirmPay('${esc(m.order_id)}','${esc(m.mandate_uuid)}')">I have paid · capture 我已付款·捕获</button>`
         : (m.status === 'COMPLETED' ? '<span class="badge b-completed">已扣款</span>' : '');
       return `<div class="tx">
         <div class="tx-head">
@@ -168,22 +170,22 @@ async function loadMandates() {
     }).join('');
     renderPager();
   } catch (e) {
-    el.innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`;
+    el.innerHTML = `<div class="empty">Load failed: ${esc(e)} · 加载失败</div>`;
   }
 }
 
 function renderPager(){
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   document.getElementById('pager').innerHTML = `
-    <button class="btn btn-sm gray" ${page<=0?'disabled':''} onclick="goPage(${page-1})">‹ 上一页</button>
+    <button class="btn btn-sm gray" ${page<=0?'disabled':''} onclick="goPage(${page-1})">‹ Previous 上一页</button>
     <span>第 ${page+1} / ${pages} 页</span>
-    <button class="btn btn-sm gray" ${page>=pages-1?'disabled':''} onclick="goPage(${page+1})">下一页 ›</button>`;
+    <button class="btn btn-sm gray" ${page>=pages-1?'disabled':''} onclick="goPage(${page+1})">Next › 下一页</button>`;
 }
 function goPage(p){ page = Math.max(0, p); loadMandates(); window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'}); }
 
 async function confirmPay(orderId, mandateUuid) {
   const msg = document.getElementById('msg');
-  msg.className = ''; msg.textContent = '捕获中……';
+  msg.className = ''; msg.textContent = 'Capturing… 捕获中……';
   try {
     const d = await (await fetch('/api/mandates/confirm', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -191,10 +193,10 @@ async function confirmPay(orderId, mandateUuid) {
     })).json();
     msg.className = d.completed ? 'ok' : 'err';
     msg.textContent = d.completed
-      ? `✅ 闭环完成 —— capture ${d.capture_id}`
-      : `未捕获成功（状态 ${d.status}）。请确认已在 PayPal 页面点完「完成购买」。`;
+      ? `✅ Loop closed — capture ${d.capture_id} · 闭环完成`
+      : `Not captured (status ${d.status}). Confirm you completed "Pay now" on the PayPal page. · 未捕获成功`;
     loadMandates();
-  } catch (e) { msg.className = 'err'; msg.textContent = '捕获失败: ' + e; }
+  } catch (e) { msg.className = 'err'; msg.textContent = 'Capture failed: ' + e + ' · 捕获失败'; }
 }
 
 loadConstraint();

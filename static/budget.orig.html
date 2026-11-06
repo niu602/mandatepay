@@ -1,4 +1,25 @@
 <!DOCTYPE html>
+<!--
+  ============================================================================
+  ARCHIVED SNAPSHOT — NOT A LIVE PAGE.  归档快照 —— 不是运行中的页面。
+
+  This is the budget page as it was BEFORE the AG Studio rewrite
+  (commit b103c05). It is kept for one reason only: as a manual escape hatch,
+  documented in AG_STUDIO_FEASIBILITY.md "方式二":
+
+      cp static/budget.orig.html static/budget.html     # revert to the pre-AG-Studio page
+
+  It has **no route** and nothing references it — the app never serves it.
+  The page judges actually see is static/budget.html, which contains BOTH views:
+    · the AG Studio dashboard (default)
+    · a classic hand-built view (toggle button + automatic fallback)
+  The classic view inside budget.html is the real fallback — not this file.
+
+  Kept here (rather than moved to docs/) so the `cp` command above keeps working.
+
+  内容为改造前的中文版本，仅作归档留档，不参与 W-10 前端英文化验收。
+  ============================================================================
+-->
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">

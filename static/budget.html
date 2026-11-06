@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MandatePay · 预算仪表盘 Budget Dashboard</title>
+  <title>MandatePay · Budget Dashboard 预算仪表盘</title>
 
   <!-- AG Studio 前端运行时：npm 包（ESM + 裸依赖），靠 import map 逐级映射。
        页面先探测本地 /static/vendor（若服务器已挂载），否则回退 jsdelivr CDN。
@@ -67,28 +67,28 @@
     <a href="/budget">· 预算 Budget</a>
   </nav>
 
-  <h1>MandatePay · 预算仪表盘 <span style="font-size:15px;color:#5a6b82;font-weight:400">Budget Dashboard</span></h1>
-  <div class="sub">Agent 每一笔花钱都在预算之内 —— 剩余多少、会不会超，用数据说话 · Every purchase stays inside the budget</div>
+  <h1>MandatePay · <span style="font-size:15px;color:#5a6b82;font-weight:400">Budget Dashboard 预算仪表盘</span></h1>
+  <div class="sub">Every purchase the agent makes stays inside the budget — how much is left, whether it will overshoot, answered with data · Agent 每一笔花钱都在预算之内</div>
 
   <div class="note">
-    <b>本页由 AG Studio 渲染 / Powered by AG Studio</b>　数据源是本服务已有的
-    <code>/api/budget/summary</code>（未改动后端）。若 AG Studio 未能加载，页面会<b>自动回退到原版手写视图</b>，也可手动切换。
-    <span style="color:#8a94a6">Rendered by AG Studio from the existing <code>/api/budget/summary</code> endpoint.
-    Falls back to the classic hand-built view if the Studio runtime cannot load.</span>
+    <b>Powered by AG Studio · 本页由 AG Studio 渲染</b>
+    <span style="color:#8a94a6">Rendered by AG Studio from the existing <code>/api/budget/summary</code> endpoint — the backend is unchanged.
+    If the Studio runtime cannot load, the page falls back to the classic hand-built view automatically; you can also switch manually.
+    · 数据源是本服务已有的 <code>/api/budget/summary</code>（未改动后端）；若 AG Studio 未能加载，页面会自动回退到原版手写视图，也可手动切换。</span>
   </div>
 
   <div id="alert"></div>
 
   <!-- ══ AG Studio 视图 ══ -->
   <div class="card" id="agCard">
-    <h2>预算总览 <span style="font-weight:400;color:#5a6b82">Budget Overview</span>
+    <h2><span style="font-weight:400;color:#5a6b82">Budget Overview 预算总览</span>
       <span class="sp"></span>
       <span class="tag-ag">AG Studio</span>
-      <button class="btn gray" onclick="toggleView()">切换到原版视图 / Classic view</button>
+      <button class="btn gray" onclick="toggleView()">Switch to the classic view / 切换到原版视图</button>
     </h2>
     <div id="studio"></div>
     <div id="agEmpty" hidden style="font-size:13px;color:#8a94a6;margin-top:8px">
-      本月暂无「已到账」支出，因此供应商分布图为空。完成一笔支付（<code>/approvals</code> 点「我已付款·捕获」）后此处会出现分布图。
+      No completed payments this month, so the per-vendor chart is empty. Complete a payment (<code>/approvals</code> click "I have paid · capture 我已付款·捕获") and the breakdown appears here.
       <span style="color:#a9b4c4">No completed payments this month, so the vendor chart is empty. Complete a payment to populate it.</span>
     </div>
     <div id="agStatus">正在加载 AG Studio 运行时… / Loading AG Studio runtime…</div>
@@ -97,24 +97,24 @@
   <!-- ══ 原版视图（自动回退 / 手动切换）══ -->
   <div id="classicCard" hidden>
     <div class="card">
-      <h2>预算总览 <span style="font-weight:400;color:#5a6b82">Budget Overview</span>
+      <h2><span style="font-weight:400;color:#5a6b82">Budget Overview 预算总览</span>
         <span class="sp"></span>
-        <span class="tag-ag" style="background:#f0f2f5;color:#5a6b82">原版 Classic</span>
-        <button class="btn gray" onclick="toggleView()">切回 AG Studio / Back to AG Studio</button>
+        <span class="tag-ag" style="background:#f0f2f5;color:#5a6b82">Classic 原版</span>
+        <button class="btn gray" onclick="toggleView()">Back to AG Studio / 切回 AG Studio</button>
       </h2>
       <div class="kpis" id="kpis"></div>
       <div class="bar" id="bar"><i id="barUsed" style="width:0%"></i><div class="proj" id="barProj" style="left:0%;width:0%"></div></div>
       <div class="legend">
-        <span><i style="background:#0070ba"></i>已承诺支出 Committed spend</span>
-        <span><i style="background:rgba(255,193,7,.6);border:1px dashed #b36b00"></i>月末预测 Projected</span>
+        <span><i style="background:#0070ba"></i>Committed spend 已承诺支出</span>
+        <span><i style="background:rgba(255,193,7,.6);border:1px dashed #b36b00"></i>Projected 月末预测</span>
       </div>
     </div>
     <div class="card">
-      <h2>按供应商分布 <span style="font-weight:400;color:#5a6b82">Spend by Vendor</span></h2>
-      <div id="vendors"><div class="empty">加载中……</div></div>
+      <h2><span style="font-weight:400;color:#5a6b82">Spend by Vendor 按供应商分布</span></h2>
+      <div id="vendors"><div class="empty">Loading… 加载中……</div></div>
     </div>
     <div class="card">
-      <h2>约束阈值 <span style="font-weight:400;color:#5a6b82">Thresholds</span></h2>
+      <h2><span style="font-weight:400;color:#5a6b82">Thresholds 约束阈值</span></h2>
       <div id="thresholds"></div>
     </div>
   </div>
@@ -153,10 +153,10 @@ function toggleView() {
 
     document.getElementById('kpis').innerHTML = `
       <div class="kpi"><div class="k">月度预算 Monthly budget</div><div class="v">${money(budget)}</div><div class="d">滚动预算上限 Rolling cap</div></div>
-      <div class="kpi ${d.over_budget ? 'warn' : ''}"><div class="k">已承诺支出 Committed</div><div class="v">${money(spent)}</div><div class="d">下单即计入 On order</div></div>
+      <div class="kpi ${d.over_budget ? 'warn' : ''}"><div class="k">Committed 已承诺支出</div><div class="v">${money(spent)}</div><div class="d">Counted on order 下单即计入</div></div>
       <div class="kpi"><div class="k">其中已到账 Completed</div><div class="v">${money(d.monthly_completed_usd)}</div><div class="d">待支付 ${money(d.monthly_committed_usd)} pending</div></div>
       <div class="kpi ${remain < 0 ? 'warn' : 'good'}"><div class="k">剩余额度 Remaining</div><div class="v">${money(remain)}</div><div class="d">${remain < 0 ? '已超预算 Over budget' : '可继续授权 Available'}</div></div>
-      <div class="kpi ${d.over_budget ? 'warn' : ''}"><div class="k">月末预测 Projected</div><div class="v">${money(proj)}</div><div class="d">按第 ${d.day_of_month} 天速率外推</div></div>
+      <div class="kpi ${d.over_budget ? 'warn' : ''}"><div class="k">Projected month-end 月末预测</div><div class="v">${money(proj)}</div><div class="d">Extrapolated from the day-${d.day_of_month} rate 按第 ${d.day_of_month} 天速率外推</div></div>
       <div class="kpi"><div class="k">今日已承诺 Today</div><div class="v">${money(d.daily_spent_usd)}</div><div class="d">日累计阈值依据 Daily cap</div></div>`;
 
     const bar = document.getElementById('bar');
@@ -186,11 +186,11 @@ function toggleView() {
   function renderAlert(d) {
     const budget = d.monthly_budget_usd || 0, spent = d.monthly_spent_usd || 0, proj = d.projected_month_usd || 0;
     document.getElementById('alert').innerHTML = d.over_budget
-      ? `<div class="warnbox"><b>⚠️ 预算风险 Budget risk</b>　按当前速率，月末预计花费 ${money(proj)}，将<b>超出</b>月度预算 ${money(budget)}。
-         建议收紧单笔阈值或分批采购。
+      ? `<div class="warnbox"><b>⚠️ Budget risk 预算风险</b>　At the current rate, projected month-end spend is ${money(proj)}, which <b>exceeds</b> the ${money(budget)} monthly budget.
+         Tighten the single-transaction threshold or buy in batches.
          <span style="color:#8c1d18">Projected month-end spend ${money(proj)} exceeds the ${money(budget)} budget — tighten the single-transaction threshold or buy in batches.</span></div>`
-      : `<div class="okbox">✓ 预算健康 Budget healthy：已承诺 ${money(spent)} / ${money(budget)}（其中已到账 ${money(d.monthly_completed_usd)}），
-         按当前速率月末预计 ${money(proj)}，仍在预算内。
+      : `<div class="okbox">✓ Budget healthy 预算健康：committed ${money(spent)} / ${money(budget)} (of which ${money(d.monthly_completed_usd)} completed),
+         projected month-end ${money(proj)} stays inside the budget.
          <span style="color:#0d652d">Committed ${money(spent)} of ${money(budget)}; projected month-end ${money(proj)} stays inside the budget.</span></div>`;
   }
 
@@ -237,7 +237,7 @@ function toggleView() {
       document.getElementById('agEmpty').hidden = !!(d.by_vendor && d.by_vendor.length);
     } catch (e) {
       statusEl.className = 'err';
-      statusEl.textContent = '加载 /api/budget/summary 失败：' + e;
+      statusEl.textContent = 'Failed to load /api/budget/summary: ' + e;
       return;
     }
 
@@ -258,7 +258,7 @@ function toggleView() {
     }));
 
     const data = { sources: [
-      { id: 'kpi', name: 'KPI 预算总览', data: kpiRow, fields: [
+      { id: 'kpi', name: 'KPI Budget Overview 预算总览', data: kpiRow, fields: [
         { id: 'monthlyBudget',   name: '月度预算 Monthly Budget',      format: 'currencyFormat' },
         { id: 'monthlySpent',    name: '已承诺支出 Committed Spend',   format: 'currencyFormat' },
         { id: 'remaining',       name: '剩余额度 Remaining',           format: 'currencyFormat' },
@@ -340,7 +340,7 @@ function toggleView() {
 
     /* ── 启动 AG Studio ── */
     try {
-      statusEl.textContent = '正在加载 AG Studio 运行时… / Loading AG Studio runtime…';
+      statusEl.textContent = 'Loading AG Studio runtime… / 正在加载 AG Studio 运行时…';
       const { source, map } = await resolveImportMap();
       injectImportMap(map);
       const { createStudio } = await import('ag-studio');
@@ -351,12 +351,11 @@ function toggleView() {
         try {
           api.setState(report);
           statusEl.className = '';
-          statusEl.textContent = '✅ AG Studio 已渲染预算总览（运行时：' +
-            (source === 'local' ? '本地 vendor local' : 'jsdelivr CDN') +
-            '）/ AG Studio rendered the budget overview.';
+          statusEl.textContent = '✅ AG Studio rendered the budget overview 预算总览已渲染' +
+            ' (runtime: ' + (source === 'local' ? 'local vendor 本地 vendor' : 'jsdelivr CDN') + ')';
         } catch (e) {
           statusEl.className = 'err';
-          statusEl.textContent = 'setState 失败：' + e;
+          statusEl.textContent = 'setState failed: ' + e;
         }
       };
 
@@ -365,12 +364,12 @@ function toggleView() {
         mode: 'view',
         // view 模式下不显示右侧 Filters 面板（我们没有 filter widget，它只会显示 No filters available）
         panels: { view: { left: [], right: [] } },
-        onApiReady: () => { statusEl.textContent = 'AG Studio API 就绪，等待数据引擎… / API ready, waiting for data engine…'; },
+        onApiReady: () => { statusEl.textContent = 'AG Studio API ready, waiting for the data engine… / API 就绪，等待数据引擎…'; },
         onStudioReady: () => apply(),
       });
     } catch (e) {
       statusEl.className = 'err';
-      statusEl.textContent = '❌ AG Studio 运行时加载失败，已自动切回原版视图：' + e;
+      statusEl.textContent = '❌ AG Studio runtime failed to load — fell back to the classic view: ' + e;
       window.currentView = 'classic';
       document.getElementById('agCard').hidden = true;
       document.getElementById('classicCard').hidden = false;
