@@ -1,22 +1,31 @@
 # Render 部署配置（免费 Web Service）
 #
-# ⚠️ **本文件当前不作为部署入口使用** —— 走 Blueprint 创建服务时 Render 会拉起
-# Stripe 的 "Add Card" 身份验证弹窗（$1 临时授权），无法跳过。
-# 但那只是 **Blueprint 路径特有**的：Render 官方 FAQ 明确免费实例无需绑卡
-# （"不加卡，免费实例照样能用"），改走 Dashboard → New + → Web Service 即可绕过。
+# ⚠️ **本文件当前不作为部署入口使用。**
 #
-# 详见 W06_DEPLOY.md §二。
+# 实测结论（2026-11-08，详见 W06_DEPLOY.md §2.1）：
+# Render 对**新注册账号**强制 Stripe 身份验证（"Add Card"，$1 临时授权）。
+# 这**不是 Blueprint 路径特有**的 —— 走 Dashboard → New + → Web Service 的手动路径，
+# 用户实测走到**最后一步 "Deploy Web Service" 时仍被要求填卡**，无法跳过。
+# 属账号级风控，不是某条部署路径的问题。
+#
+# ⚠️ 因此**不要**按"改走手动创建就能绕过"的说法操作 —— 那条路同样走不通。
+#    当前实际部署平台是 **Azure App Service B1**（Azure for Students 官方免卡）。
+#
+# 保留本文件的原因：日后若解决卡片问题（例如换用已绑卡的账号），
+# 可直接 New → Blueprint → Apply 恢复声明式部署。敏感环境变量全部 sync: false。
 #
 # 平台选择理由（见 W06_DEPLOY.md）：
 # - 不用 Render 免费 PostgreSQL：创建 30 天后删除 —— 11 月建库正好在评审期
 #   （12-01 ~ 12-15）内失效（R-09）
 # - 不用 Supabase 免费层：7 天无活动即暂停，需手动恢复
 # - 不用 Zeabur：2026-10-24 已宣布停运，12-01 起暂停共享集群服务
+# - 不用 Railway：注册入口已关闭
 # - 用 Neon 免费项目：数据库不会自动删除（只休眠），且提供连接串
 #
 # 若日后要恢复 IaC 部署（且已解决卡片问题），本文件可直接使用：
 # Render Dashboard → New → Blueprint → 选本仓库 → Apply
 # 敏感环境变量全部 sync: false 手动填。
+# 环境变量清单用 `python scripts/gen_deploy_env.py --database-url <连接串>` 生成。
 
 services:
   - type: web

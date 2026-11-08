@@ -287,11 +287,66 @@ so a report can never claim "verified" while the AI path was silently down.
 |---|---|---|
 | **REST Orders v2** | The web checkout page | The canonical API every integration starts with. Verified end-to-end with a real completed sandbox order |
 | **PayPal Agent Toolkit** | The LangGraph agent | The official agent-native toolkit — same sandbox account, different SDK shape (note: its `create_order` payload differs from REST's `purchase_units[].amount.value`) |
-| **PayPal MCP Server** | Capability extension | Tool-call protocol for agent frameworks. Complements rather than replaces the other two |
+| **PayPal MCP Server** | Capability extension | The official tool-call protocol. **One capability wired up** (`invoices.list`); see below for why it cannot replace the other two |
 
 All three talk to the **same sandbox account and the same MandatePay constraint engine**
 — the guarantee that money stays in bounds does not depend on which integration path
 a purchase came in through.
+
+### The MCP capability we wired — and why it can't replace REST or the Toolkit
+
+`agent/mcp_client.py` speaks the MCP protocol directly over stdio (JSON-RPC 2.0,
+newline-delimited JSON) to the official PayPal MCP server (`@paypal/mcp`, run via
+`npx`). We wired **one** tool: **`invoices.list`** — listing invoices is something
+neither REST Orders v2 nor our Toolkit wrapper covers.
+
+It was verified end-to-end, not just wired: creating an invoice through
+`invoices.create` returned `INV2-CG5H-58YR-9KCR-VP8P`, and `invoices.list`
+then returned that same invoice back from PayPal's sandbox.
+
+**Why MCP cannot replace the other two paths** — and this is a design property,
+not a preference:
+
+> The official MCP server exposes **28 tools**, and many of them move money
+> directly: `orders.capture`, `payments.createRefund`, `subscriptions.cancel`,
+> `pay_order`, `invoices.send`, `disputes.create` …
+>
+> MCP is a *tool-call protocol* — it executes what the tool says, immediately,
+> with no policy layer in between. REST and the Toolkit both pass through
+> MandatePay's `evaluate()` **before** anything happens.
+
+So an agent given raw MCP access could capture an order or cancel a subscription
+without the constraint engine ever seeing it — which is precisely the failure mode
+this project exists to prevent. MandatePay therefore keeps MCP behind a gate
+(`agent/mcp_guarded.py`):
+
+| | REST / Toolkit (our implementation) | Raw MCP access |
+|---|---|---|
+| Money movement | Always goes through `evaluate()` first | Executes directly — **bypasses the constraint engine** |
+| Scope | Only the operations we implemented | All 28 official tools, including refunds and subscription cancellation |
+| Audit trail | Every decision produces Intent/Cart/Payment records | No Mandate record is produced |
+
+Concretely, `agent/mcp_guarded.py` maintains a **read-only allowlist**
+(`invoices.list`) and an explicit **money-moving denylist**
+(9 tools, each with the reason it is blocked). A blocked tool is rejected
+*before* any PayPal API call is made — it never even starts the MCP process.
+
+```bash
+# See the whole thing work: read-only tool fetches real data,
+# money-moving tools are blocked before any call is made
+python scripts/demo_mcp.py
+```
+
+> **The MCP path needs Node.js 18+** (the official server runs via `npx`).
+> Everything else in this project is pure Python — the MCP capability is the one
+> optional extra that pulls in a Node runtime. The Python side is a hand-rolled
+> stdio JSON-RPC client precisely to avoid adding an MCP SDK dependency to the
+> deployment (which would slow the build and the cold start).
+>
+> The remote PayPal MCP endpoint (`mcp.sandbox.paypal.com`) is **not** usable
+> here: it only accepts tokens from its own OAuth authorization-code + PKCE
+> flow, which needs an interactive browser login. The local stdio server accepts
+> the ordinary client-credentials token, so that's the path we use.
 
 ---
 
@@ -392,21 +447,41 @@ Skip it if you just want to look around. `python scripts/setup_webhook.py --crea
 ```bash
 # 1. Database — Neon free PostgreSQL (console.neon.tech → create project → copy URI)
 #    Free projects only ever sleep; they are never auto-deleted.
-# 2. App — Azure App Service F1 via Azure for Students (no card required for students)
-#    → Runtime Python 3.11, Plan Free (F1), Deployment Center → GitHub
+# 2. App — Azure App Service via Azure for Students (no card required for students)
+#    → Runtime Python 3.11, Deployment Center → GitHub
 #    → Startup Command: bash startup.sh
 #    → Environment variables: DATABASE_URL + PayPal creds + LLM key + SESSION_SECRET
 # 3. Initialise the database
 DATABASE_URL=<neon-uri> bash scripts/deploy_init.sh
 ```
 
-Full platform-selection rationale (including the platforms we ruled out and why),
-F1 quota accounting, and the acceptance checklist: **[W06_DEPLOY.md](W06_DEPLOY.md)**.
+**Live instance:** <https://mandatepay-zisen-dph6eucmf4gjckct.eastasia-01.azurewebsites.net>
+<sub>Azure App Service (B1, East Asia) · sandbox mode · public URL, no login required</sub>
 
-> **Azure F1 does not support Always On** — an idle instance may be reclaimed, so the
-> first visit pays a cold start. But F1 has a hard **60 CPU-minutes/day** limit, so
-> the keep-warm probe has to be *low frequency* (30 min ≈ 1.5 CPU min/day, 2.5% of
-> budget) and it has to run **outside** the F1 instance. Tooling:
+### Generating the environment-variable list
+
+Don't paste this file by hand — generate it, so it can't go stale:
+
+```bash
+python scripts/gen_deploy_env.py --database-url "<neon-uri>"
+#   → writes deploy.env (gitignored, contains plaintext secrets)
+#   → then paste the whole file into the platform's "Add from .env"
+```
+
+The script **refuses** to generate a file whose `DATABASE_URL` points at
+`127.0.0.1` — a local address deployed to the public internet can never reach its
+own database, and that mistake is easy to make by hand. (It has happened here
+before: a hand-written `deploy.env` sat in the repo root with the local address
+still in it.)
+
+Full platform-selection rationale (including the platforms we ruled out and why),
+quota accounting, and the acceptance checklist: **[W06_DEPLOY.md](W06_DEPLOY.md)**.
+
+> **On the deployed tier:** the live instance runs on **B1 with Always On enabled**,
+> so Azure pings the app root every five minutes and the instance is never
+> reclaimed while idle — no keep-warm daemon is needed. Azure can still restart the
+> instance (config change, platform maintenance); measured cold start after a
+> restart is **3.143s**, and the pre-warm pass takes a few seconds:
 > [W07_KEEP_WARM.md](W07_KEEP_WARM.md).
 
 ---
@@ -446,6 +521,8 @@ mandatepay/
 │   ├── llm_intent.py       # LLM function-calling parser (OpenAI protocol)
 │   ├── ai_insight.py       # the two AI decision nodes (insight / explain)
 │   ├── paypal_tools.py     # PayPal Agent Toolkit wrapper — agent path
+│   ├── mcp_client.py       # MCP protocol client (stdio JSON-RPC) for PayPal MCP server
+│   ├── mcp_guarded.py      # MCP access gate — allowlist + constraint check
 │   ├── graph.py            # 7-node state machine
 │   ├── store.py            # persistence (dual backend: PostgreSQL / SQLite)
 │   ├── e2e_check.py        # payment loop verification script
@@ -458,7 +535,9 @@ mandatepay/
 │   ├── deploy_init.sh            # one-shot: schema → seed → catalog → clean
 │   ├── reset_demo_data.py        # clear demo data (keeps constraints)
 │   ├── seed_demo_scenarios.py    # rebuild the 3 demo transactions (one per decision)
-│   ├── keep_warm.py              # keep-warm / pre-warm / cold-start probe
+│   ├── gen_deploy_env.py         # generate deploy.env (refuses local DATABASE_URL)
+│   ├── demo_mcp.py               # MCP capability demo — read-only works, money tools blocked
+│   ├── keep_warm.py              # pre-warm / cold-start probe / CDN self-check
 │   ├── stress_constraints.py     # 650-judgement stress test, 3 oracles
 │   ├── verify_llm_zai.py         # 20-sentence intent verification + degradation stats
 │   ├── scan_secrets.py           # wide-criteria key scan (tree + full history + self-check)
@@ -470,17 +549,13 @@ mandatepay/
 │   ├── audit.html          # three-layer Mandate audit + human confirmation
 │   ├── budget.html         # AG Studio dashboard (with classic fallback inside)
 │   └── budget.orig.html    # ARCHIVED pre-AG-Studio snapshot (no route, not a live page)
-├── tests/                  # 113 tests: constraints + session auth + keep-warm + UI English
-├── scripts/
-│   ├── check_ui_english.py     # static check: no pure-Chinese visible blocks
-│   ├── check_ui_rendered.py    # headless-browser check: renders each page, verifies the same
-│   └── …                       # (see the full list above)
+├── tests/                  # 139 tests: constraints + session auth + keep-warm + UI English + MCP
 ├── Dockerfile / Procfile / startup.sh / render.yaml   # deployment assets
 ├── LLM_INTENT_VERIFICATION.md   # 20 × 3 intent parsing report
 ├── STRESS_REPORT.md             # 650-judgement constraint stress report
 ├── W05_ZAI_MIGRATION.md         # endpoint migration + 429 handling
 ├── W06_DEPLOY.md                # deployment record + platform rationale
-├── W07_KEEP_WARM.md             # F1 keep-warm / pre-warm handbook
+├── W07_KEEP_WARM.md             # pre-warm / cold-start / monitoring handbook
 ├── W08_API_AUTH.md              # session auth design + DoD
 ├── STARTUP.md                   # local dev quick reference (start / verify / troubleshoot)
 └── LICENSE                      # MIT (Copyright 2026 Niu Zisen)

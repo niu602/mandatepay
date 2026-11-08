@@ -404,7 +404,15 @@ python scripts/keep_warm.py --url https://mandatepay-zisen-dph6eucmf4gjckct.east
 ### 6.2 保温策略（实测后修正：线上不需要 pinger）
 
 **线上实际配置：SKU = B1（Basic，Always On 常驻）**，不是原方案的 F1。
-Always On 意味着实例不因空闲被回收 → **不需要外部 pinger 保温**。
+
+Always On 的机制（Azure 官方文档）：
+
+> *"When Always On is turned on, the front-end load balancer sends a GET request to
+> the application root **every five minutes**. The continuous ping prevents the app
+> from being unloaded."*
+
+即**平台自己每 5 分钟 ping 一次** → 实例不因空闲被回收 →
+**不需要外部 pinger 保温**，也不存在"在自己电脑上挂 15 天"的负担。
 
 原方案（针对 F1）的低频探针设计**保留在 `scripts/keep_warm.py` 里**，
 用途从"保温"转为两件事：
@@ -424,6 +432,16 @@ python scripts/keep_warm.py --url <线上URL> --check-cdn
 
 > **为什么 CDN 自检是必做项**：若 `static/vendor/` 真被挂上去，
 > 7MB × 访问次数会很快吃掉 App Service 的**165MB 带宽/天**上限。
+
+> **建议加一个外部宕机监控（UptimeRobot 之类）**：
+> 30 分钟打一次 `/healthz`，**纯粹是宕机报警**，不负责保温
+> （保温已由 Always On 负责）。用 SaaS 而非本地 daemon 的理由：
+> 评审期那 15 天你的电脑会关机/休眠，本地进程一定会中断。
+> 配置细节见 **[W07_KEEP_WARM.md](W07_KEEP_WARM.md)**。
+
+> ⚠️ **Always On ≠ 永不休眠**：Azure 仍会在配置变更、平台维护、缩放等时机
+> 重启实例（11-08 实测撞上过一次，冷启动 0.709s → 3.143s）。
+> 所以演示前仍要 `--warm` 预热一次。
 > 线上实测已确认回退 CDN 生效。
 
 探针**必须跑在 F1 实例外面**（跑在实例里的话，实例卸载时探针一起没了）。

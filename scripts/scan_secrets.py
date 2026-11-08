@@ -87,7 +87,16 @@ ALLOW_SUBSTR_EXACT = {
     "***",
     # 文档里常见的占位符密码段（示例文本，非真实凭据）
     "password", "passwd", "PASSWORD", "your_password", "your-password",
+    # 测试代码里的假 token（实测踩到：`access_token="fake-token-not-used"`
+    # 被"通用赋值"口径判成真泄漏 —— 扫描器分不出真假，只能靠明确的 fake 标记）
+    "fake-token-not-used", "fake-token", "test-token", "dummy-token",
+    "fake", "dummy", "placeholder", "example",
 }
+
+# 值里含这些标记 → 判定为「明显的测试占位符」，不是真凭据。
+# 只认**明确的** fake/dummy/test 词（不认 "example"，那个太常见，
+# 真实凭据里也可能含 —— 上面只作为精确值豁免）。
+FAKE_MARKERS = ("fake", "dummy", "placeholder", "not-used", "notused")
 
 # ── base64 候选：长度 >= 24 的 base64 串 ────────────────
 B64_CANDIDATE_RE = re.compile(r"[A-Za-z0-9+/]{24,}={0,2}")
@@ -115,13 +124,26 @@ def _is_allowed(raw: str) -> bool:
     包含判断会让 `"password": "真实密码"` 里的 password 把整段放行（真泄漏被放过）。
     对"变量=值"型命中（口径 1/2），额外检查**值部分**是否精确等于某个豁免项：
     如 `api_key = 'sk-xxxx'` → 整段不是豁免，但值 `sk-xxxx` 是 → 豁免。
+
+    另外：值部分含**明确的** fake/dummy 标记时也豁免
+    （如 `access_token="fake-token-not-used"`）——
+    扫描器分不出真假 token，只能靠这类显式标记；
+    但只认明确的标记词，"example" 这种太常见的不算。
     """
     if raw in ALLOW_SUBSTR_EXACT:
         return True
-    # 口径 2：拆出引号里的值再判断
-    m = re.search(r"['\"]([^'\"]{8,})['\"]", raw)
-    if m and m.group(1) in ALLOW_SUBSTR_EXACT:
-        return True
+    # 口径 2：拆出引号里的值再判断。
+    # ⚠️ 不能要求**成对**引号 —— ASSIGN_RE 的值部分是 `[^'"]{8,}`（贪婪），
+    #    匹配到的 raw 形如 `token="fake-token-not-used`（只有开引号），
+    #    用成对引号的正则会提不出值 → 豁免失效 → 假 token 被判成真泄漏。
+    m = re.search(r"['\"]([^'\"]{8,})", raw)
+    if m:
+        val = m.group(1)
+        if val in ALLOW_SUBSTR_EXACT:
+            return True
+        low = val.lower()
+        if any(marker in low for marker in FAKE_MARKERS):
+            return True
     return False
 
 
@@ -218,6 +240,12 @@ def scan_worktree() -> list[dict]:
             continue
         # 明确忽略 .env 本体（本来就 gitignore，从不入库）
         if path.name == ".env" or path.name.endswith(".bak_w02"):
+            continue
+        # deploy.env 同理：它是「本地生成的、含明文密钥的部署清单」，
+        # 已 gitignore / git dockerignore，从不入库。
+        # 它**必然**包含真密码（那是它的用途），所以扫它只会产生恒真的误报 ——
+        # 而恒真的误报会让人习惯性忽略扫描结果，反而掩盖真泄漏。
+        if path.name == "deploy.env":
             continue
         try:
             data = path.read_bytes()
@@ -323,9 +351,13 @@ def _self_check() -> bool:
         ("厂商前缀 ghp_", "ghp_abcdefghijklmnopqrstuvwxyz012345"),
         ("通用赋值 api_key", "api_key = 'abcdefghijklmnop123456'"),
         ("通用赋值 password", 'password: "Sup3rS3cretPwd12345"'),
-        ("连接串密码(云库)", "postgresql://u:npg_REDACTED_BY_FILTER@ep-x.neon.tech/db"),
+        ("连接串密码(云库)", "postgresql://u:npg_FAKEfakeFAKEfake00@ep-x.neon.tech/db"),
         ("连接串密码(mysql)", "mysql://root:Sup3rS3cretPwd@db.example.com:3306/app"),
     ]
+    # ⚠️ 自检样本里的密码必须是**假的**。
+    # 踩过的坑：最初这里写的是真实 Neon 密码当"应检出"样本 →
+    # 它进了 git 历史，而仓库是公开的 → 任何人都能看到。
+    # 教训：扫描器的自检样本也要过扫描器自己的口径。
     should_miss = [
         ("打码连接串", "postgresql://u:***@ep-x.neon.tech/db"),
         ("本地默认口令", "postgresql://postgres:postgres@localhost:5432/db"),

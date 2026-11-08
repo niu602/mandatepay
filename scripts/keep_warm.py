@@ -1,25 +1,41 @@
-"""Azure F1 保温探针 —— 低频 ping + 冷启动耗时记录。
+"""线上服务的预热 / 冷启动测量 / 部署后自检工具。
 
-为什么需要这个脚本
-------------------
-Azure App Service F1 **不支持 Always On**：闲置后实例可能被平台卸载，
-下次访问要走冷启动（实测 2-5 CPU 秒）。而 F1 有 **60 CPU 分钟/天硬上限**，
-所以保温必须是"低频"的 —— 高频 ping 本身耗 CPU，可能把配额 ping 挂。
+⚠️ **2026-11-08 修正：线上是 B1 + Always On，不需要"保温"。**
+------------------------------------------------------------------------
+最初这个脚本是按 **F1** 写的（F1 不支持 Always On，闲置 20 分钟会被卸载，
+所以需要外部探针保温）。但线上实际部署的是 **B1（Basic）**，
+**Always On 已开启** —— 按 Azure 官方文档：
 
-关键约束（v4 实测核算）
-----------------------
-探针**必须跑在 F1 实例外面**。如果探针跑在同一个实例里，实例被卸载时
-探针也一起没了 —— 根本起不到保温作用。本脚本设计为在**本地机器**
-（或任何常开设备）上跑，通过公网 URL 访问线上服务。
+> When Always On is turned on, the front-end load balancer sends a GET request
+> to the application root **every five minutes**. The continuous ping prevents
+> the app from being unloaded.
 
-CPU 预算核算（保守假设：1/3 的探针落在冷启动上）
-------------------------------------------------
-    间隔      次数/天   冷启动 CPU 秒   热实例 CPU 秒   合计/天    占 60 分钟预算
-    10 分钟      144         245            29         4.56 min7.6%   ← v1/v2 的方案，作废
-    30 分钟       48          82            10         1.52 min     2.5%   ← 默认
-    60 分钟       24          41             5         0.76 min     1.3%
+也就是说**平台自己每 5 分钟 ping 一次**，实例常驻不卸载。
+→ 不需要"在自己电脑上挂 15 天"的 daemon。
+→ 只剩两种情况会重启：配置变更、平台维护（实测冷启动 3.143s，可接受）。
 
-→ 30 分钟间隔约 1.5 CPU 分钟/天，远低于工单 DoD 的"当天< 10 CPU 分钟"。
+现在这个脚本的定位变成三件事：
+
+1. `--warm`      **演示前预热**（打一遍所有页面，让浏览器缓存与 JIT 都热起来）
+2. `--measure`  **冷启动耗时测量**（DoD 验收项）
+3. `--check-cdn` **部署后自检**（确认 AG Studio 走 CDN 而非本地 7MB vendor）
+
+另加 `--once` 做一次性检查。
+
+**如果你想加一个外部监控（推荐）**：
+用 UptimeRobot 之类的 SaaS 建一个 30 分钟的探针打 `/healthz`，
+**纯粹当 12-01~12-15 的宕机报警** —— 它不负责保温（B1 已经保住了），
+只是让你在评委访问前知道服务挂了。用 SaaS 而非本地 daemon 的理由：
+本地进程会随电脑关机/休眠而中断，评审期你不可能保证自己的机器一直开着。
+
+CPU 预算（保留供参考 —— B1 没有 60 分钟硬上限，但探针仍应低频）
+---------------------------------------------------------------
+F1 曾有 60 CPU 分钟/天硬上限；B1 没有该限制，但下面的数字仍说明
+"低频"是对的（平台自己 5 分钟一次，我们没必要更频繁）：
+
+    间隔      次数/天   合计 CPU/天     备注
+    30 分钟       48      1.52 min      ← 建议的监控间隔
+    60 分钟       24      0.76 min
 
 用法
 ----
@@ -242,7 +258,7 @@ def estimate_cpu_minutes_per_day(interval_min: float,
                                   cold_seconds: float = 5.0,
                                   warm_seconds: float = 0.3,
                                   cold_ratio: float = 0.34) -> dict:
-    """估算保温探针的 CPU 消耗（F1 硬上限 60 CPU 分钟/天）。
+    """估算探针的 CPU 消耗（B1 无硬上限，这张表是参考值）。
 
     参数取保守值：
       - cold_seconds=5：冷启动实测 2-5 CPU 秒，取上限
@@ -250,7 +266,8 @@ def estimate_cpu_minutes_per_day(interval_min: float,
         但算上路由 + 中间件开销取 0.3 秒
       - cold_ratio=0.34：假设 1/3 的探针落在实例被卸载后的冷启动上
 
-    F1 不支持 Always On，闲置后实例可能被卸载 → 冷启动比例不可忽略。
+    B1 + Always On 下实例常驻不卸载 → 冷启动只发生在平台重启时。
+    这里仍按保守比例估算，因为平台重启时机不可控。
     """
     per_day = 24 * 60 / max(interval_min, 1e-9)
     cold_cost = per_day * cold_ratio * cold_seconds
@@ -279,11 +296,11 @@ def cmd_loop(base: str, interval_min: float, timeout: int, max_pings: int,
     print(f"保温探针启动 —— {base}")
     print(f"间隔 {interval_min:g} 分钟　超时 {timeout}s")
     print(f"CPU 预算估算：约 {est['cpu_minutes_per_day']} CPU 分钟/天"
-          f"（{est['pings_per_day']:.0f} 次/天，占 F1 的 60 分钟预算 {est['pct_of_budget']}%）")
+          f"（{est['pings_per_day']:.0f} 次/天，参考 CPU 占用 {est['pct_of_budget']}%）")
     if not est["under_dod_threshold"]:
         print(f"⚠️  超过工单 DoD 的「当天 < 10 CPU 分钟」—— 请把间隔调大")
     if interval_min < 30:
-        print("⚠️  间隔低于 30 分钟 —— F1 只有 60 CPU 分钟/天，高频 ping 可能把配额 ping 挂")
+        print("⚠️  间隔低于 30 分钟 —— 平台自己才 5 分钟一次 ping，没必要更频繁")
     print("Ctrl-C 退出")
     print("=" * 66)
 
@@ -321,9 +338,9 @@ def cmd_budget(interval_min: float) -> int:
     本地先算一遍，避免上线后才发现 ping 太频繁。
     """
     print("=" * 72)
-    print("F1 CPU 预算核算 —— 保温间隔怎么定")
+    print("探针 CPU 占用参考 —— 监控间隔怎么定")
     print("=" * 72)
-    print("F1 硬上限：60 CPU 分钟/天　　工单 DoD：当天 < 10 CPU 分钟")
+    print("线上是 B1 + Always On（无 60 分钟硬上限），工单 DoD：当天 < 10 CPU 分钟")
     print()
     print(f"{'间隔':>8}{'次/天':>8}{'冷启动秒':>11}{'热实例秒':>11}"
           f"{'合计分钟':>11}{'占预算':>9}  判定")
@@ -342,7 +359,7 @@ def cmd_budget(interval_min: float) -> int:
     print()
     print("结论：30 分钟间隔约 1.5 CPU 分钟/天，占预算 2.5% —— 余量充足。")
     print("      10 分钟间隔（v1/v2 作废的方案）也只占 7.6%，但工单已明确")
-    print("      「高频 ping 反而会吃掉 CPU 配额」，且 F1 不支持 Always On、")
+    print("      「高频 ping 反而会吃掉 CPU 配额」，且平台自己 5 分钟 ping 一次、")
     print("      实例卸载时机不可控 —— 30 分钟是稳妥选择。")
     return 0
 
@@ -398,19 +415,19 @@ def cmd_check_cdn(base: str, timeout: int, use_proxy: bool = False) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Azure F1 保温探针（低频 ping + 冷启动测量 + 演示前预热）",
+        description="线上服务探针（演示前预热 + 冷启动测量 + CDN 自检）",
     )
     ap.add_argument("--url", default="", help="线上服务根 URL（不含路径）；--budget 模式可省略")
     ap.add_argument("--interval", type=float, default=DEFAULT_INTERVAL_MIN,
                     help=f"保温间隔（分钟），默认 {DEFAULT_INTERVAL_MIN}。"
-                         "不要低于 30 —— F1 只有 60 CPU 分钟/天（支持小数，仅便于测试）")
+                         "不要低于 30 —— 平台自己才 5 分钟 ping 一次（支持小数，仅便于测试）")
     ap.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT,
                     help=f"单次请求超时（秒），默认 {DEFAULT_TIMEOUT}")
     ap.add_argument("--once", action="store_true", help="只探测一次")
     ap.add_argument("--warm", action="store_true", help="演示前预热：打一遍所有页面")
     ap.add_argument("--measure", action="store_true", help="测冷启动耗时（连打 3 次）")
     ap.add_argument("--budget", action="store_true",
-                    help="打印各间隔下的 F1 CPU 预算表（不需要 URL）")
+                    help="打印各间隔下的 CPU 占用参考表（不需要 URL）")
     ap.add_argument("--check-cdn", action="store_true",
                     help="部署后自检：确认 /budget 走 CDN 回退而非本地 7MB vendor")
     ap.add_argument("--max-pings", type=int, default=0,
