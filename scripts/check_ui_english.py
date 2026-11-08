@@ -50,10 +50,22 @@ def visible_chunks(html: str) -> list[tuple[str, str]]:
     """返回 [(来源, 文本片段)]，只含含中文的可见片段。
 
     来源标记：`html` = HTML 文本节点，`js` = JS 字符串字面量。
+
+    ⚠️ **模板字符串里的 HTML 也要检查**（2026-11-08 修）
+    `approvals.html` / `audit.html` 把详情面板整块写在 `<script>` 内的
+    **模板字符串**里（`` el.innerHTML = `...` ``）。而 `<script>` 块被
+    整体剥掉后再找 `>文本<` —— 等于**漏检了这两页绝大部分可见文本**。
+
+    实测漏掉的：
+      `<span class="k">供应商</span>`   （审批详情面板）
+      `layerBox('Intent 层', ...)`      （审计页三层标签）
+    两处都是 W-10 漏改、且两个检查器都报"通过"的地方。
+
+    所以现在：script 块内的**模板字符串**要按 HTML 再解析一遍文本节点。
     """
     chunks: list[tuple[str, str]] = []
 
-    # ── HTML 文本节点 ──
+    # ── HTML 文本节点（script 块外）──
     rest = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.S | re.I)
     rest = re.sub(r"<style[^>]*>.*?</style>", "", rest, flags=re.S | re.I)
     for m in re.finditer(r">([^<>]*)<", rest):
@@ -68,6 +80,14 @@ def visible_chunks(html: str) -> list[tuple[str, str]]:
         s = m.group(1).strip()
         if s and CJK.search(s):
             chunks.append(("js", s))
+
+    # ── 模板字符串里的 HTML 文本节点（script 块内）──
+    # 这些片段会被 innerHTML 渲染成真实 DOM，必须检查。
+    for tmpl in re.findall(r"`([^`]*)`", js, flags=re.S):
+        for m in re.finditer(r">([^<>]*)<", tmpl):
+            s = m.group(1).strip()
+            if s and CJK.search(s):
+                chunks.append(("js-html", s))
 
     return chunks
 

@@ -107,7 +107,7 @@ let filter = 'pending', current = null;
 
 async function loadList(){
   const el = document.getElementById('list');
-  el.innerHTML = '<div class="empty">加载中……</div>';
+  el.innerHTML = '<div class="empty">Loading… 加载中……</div>';
   try{
     const d = await (await fetch('/api/approvals?status='+filter)).json();
     const items = d.items||[];
@@ -143,10 +143,10 @@ function openModal(i){
       <div class="ltext">${esc(o.content||'')}</div></div>` : `<div class="layer-box l-${cls}"><div class="lname">${name}</div><div class="ltext">—</div></div>`;
   document.getElementById('mTitle').textContent = `${m.vendor||'Purchase 采购'} · $${Number(m.amount_usd||0).toFixed(2)}`;
   document.getElementById('mBody').innerHTML = `
-    <div class="note">这笔请求超出 Agent 的单笔授权额度，因此<b>停下来等人确认</b>。你批准后 Agent 才继续，人始终握有最终授权权。</div>
-    <div class="kv"><span class="k">供应商</span><span class="v">${esc(m.vendor||'—')}</span></div>
-    <div class="kv"><span class="k">商品</span><span class="v">${esc(m.cart||'—')}</span></div>
-    <div class="kv"><span class="k">金额</span><span class="v">$${Number(m.amount_usd||0).toFixed(2)}</span></div>
+    <div class="note">This request exceeds the agent's single-transaction authorisation, so it <b>stops and waits for a human</b>. The agent continues only after you approve — the final authorisation always stays with the human. · 这笔请求超出 Agent 的单笔授权额度，因此停下来等人确认。你批准后 Agent 才继续，人始终握有最终授权权。</div>
+    <div class="kv"><span class="k">Vendor 供应商</span><span class="v">${esc(m.vendor||'—')}</span></div>
+    <div class="kv"><span class="k">Item 商品</span><span class="v">${esc(m.cart||'—')}</span></div>
+    <div class="kv"><span class="k">Amount 金额</span><span class="v">$${Number(m.amount_usd||0).toFixed(2)}</span></div>
     <div class="kv"><span class="k">Engine verdict 引擎判定</span><span class="v">${esc(m.decision||'—')}</span></div>
     <div class="kv"><span class="k">Status 状态</span><span class="v"><span class="badge b-${String(m.status||'').toLowerCase()}">${esc(m.status)}</span></span></div>
     <div class="kv"><span class="k">trace_id</span><span class="v">${esc(m.trace_id||'—')}</span></div>

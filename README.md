@@ -15,8 +15,11 @@ those bounds. Every transaction produces a **three-layer Mandate record**
 We are building *"an AI that is allowed to buy things."*
 
 <!-- DEPLOYED_URL -->
-<!-- Live instance: (pending — Azure App Service deployment, see "Deployment" below.
-     Run locally in 15 minutes: the instructions right below are the primary path.) -->
+**Live instance:** <https://mandatepay-zisen-dph6eucmf4gjckct.eastasia-01.azurewebsites.net>
+<sub>Azure App Service (B1, East Asia) · sandbox mode · public URL, no login required</sub>
+
+Prefer to run it yourself? The instructions right below are the primary path —
+15 minutes, no questions asked.
 
 ---
 

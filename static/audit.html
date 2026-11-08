@@ -142,9 +142,9 @@ async function loadMandates() {
       const L = m.layers || {};
       const canConfirm = m.order_id && m.status !== 'COMPLETED' && m.status !== 'REJECTED';
       const action = canConfirm
-        ? `<a class="btn btn-sm" href="https://www.sandbox.paypal.com/checkoutnow?token=${esc(m.order_id)}" target="_blank">去确认付款</a>
+        ? `<a class="btn btn-sm" href="https://www.sandbox.paypal.com/checkoutnow?token=${esc(m.order_id)}" target="_blank">Go to PayPal 去确认付款</a>
            <button class="btn btn-sm gray" onclick="confirmPay('${esc(m.order_id)}','${esc(m.mandate_uuid)}')">I have paid · capture 我已付款·捕获</button>`
-        : (m.status === 'COMPLETED' ? '<span class="badge b-completed">已扣款</span>' : '');
+        : (m.status === 'COMPLETED' ? '<span class="badge b-completed">Paid 已扣款</span>' : '');
       return `<div class="tx">
         <div class="tx-head">
           <span class="tx-title">${esc(m.vendor || (m.cart||'').split('×')[0].trim() || '—')}</span>
@@ -155,9 +155,9 @@ async function loadMandates() {
           <span class="tx-meta">${esc((m.created_at||'').slice(0,19).replace('T',' '))}</span>
         </div>
         <div class="layers">
-          ${layerBox('Intent 层', 'intent', L.intent, false)}
-          ${layerBox('Cart 层', 'cart', L.cart, false)}
-          ${layerBox('Payment 层', 'payment', L.payment, true)}
+          ${layerBox('Intent layer 层', 'intent', L.intent, false)}
+          ${layerBox('Cart layer 层', 'cart', L.cart, false)}
+          ${layerBox('Payment layer 层', 'payment', L.payment, true)}
         </div>
         <div class="tx-foot">
           ${action}

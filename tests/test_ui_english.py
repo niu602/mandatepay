@@ -207,3 +207,48 @@ def test_no_frontend_uses_removed_readme_patch():
         if ".venv" in str(f) or "node_modules" in str(f) or ".workbuddy" in str(f):
             continue
         assert f.name != "README_PATCH.md", "README_PATCH.md 应已删除"
+
+
+# ──────────────────────────────────────────────────────
+# 3. 回归保护：模板字符串里的 HTML 也必须被检查
+#    （2026-11-08 线上验收时发现的漏检）
+# ──────────────────────────────────────────────────────
+
+def test_template_string_html_is_inspected():
+    """`<script>` 块内模板字符串里的 HTML 文本节点必须进入检查范围。
+
+    **为什么需要这条**：approvals.html / audit.html 把详情面板整块写在
+    `<script>` 内的模板字符串里（`` el.innerHTML = `...` ``）。
+    而检查器原来把 `<script>` 块整体剥掉再找 `>文本<` ——
+    等于**漏检了这两页绝大部分可见文本**。
+
+    实测漏掉（且两个检查器都报"通过"）：
+      `<span class="k">供应商</span>`   审批详情面板
+      `layerBox('Intent 层', ...)`      审计页三层标签
+    """
+    from check_ui_english import visible_chunks
+
+    for name in ("approvals.html", "audit.html"):
+        html = _read(name)
+        sources = {src for src, _ in visible_chunks(html)}
+        assert "js-html" in sources, (
+            f"{name} 的模板字符串 HTML 未被检查 —— "
+            f"可见文本范围有缺口（当前来源: {sorted(sources)}）"
+        )
+
+
+def test_detects_pure_chinese_inside_template_string():
+    """反向验证：模板字符串里的纯中文标签必须被抓到。
+
+    这条比上一条更值钱 —— 上一条只证明"检查范围包含模板字符串"，
+    这条证明"范围内的纯中文确实会被标红"。
+    """
+    from check_ui_english import visible_chunks
+
+    html = _read("approvals.html")
+    # 模拟 W-10 漏改的状态：详情面板的标签只剩中文
+    broken = html.replace('<span class="k">Vendor 供应商</span>',
+                          '<span class="k">供应商</span>')
+    chunks = visible_chunks(broken)
+    hits = [txt for _, txt in chunks if txt == "供应商"]
+    assert hits, "模板字符串里的纯中文标签「供应商」应被检出"

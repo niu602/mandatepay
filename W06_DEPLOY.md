@@ -2,8 +2,49 @@
 
 > 执行时间：2026-11-01（方案于 11-02 修订四次）　目标：把 MandatePay 部署成公开可访问的 URL，供海外评委直接体验。
 >
-> **最终方案**：**Neon（数据库）+ Azure App Service F1（应用）**，
+> **最终方案**：**Neon（数据库）+ Azure App Service（应用）**，
 > 用 **Azure for Students** 免卡开通 —— 官方明确"学生版无需信用卡"。
+>
+> ---
+>
+> ## ★ 实际部署结果（2026-11-08 线上实测）
+>
+> **线上 URL**：<https://mandatepay-zisen-dph6eucmf4gjckct.eastasia-01.azurewebsites.net>
+>
+> | 项 | 计划 | **实际** | 原因 |
+> |---|---|---|---|
+> | 开通方式 | Azure for Students 免卡 | ✅ **Azure for Students，$100 / 365 天**（到 2027-11-08） | 学籍审核通过 |
+> | Region | West US 2（与 Neon 同区） | ⚠️ **East Asia** | 学生订阅**白名单拒绝** West US 2 |
+> | SKU | Free (F1) | ⚠️ **Basic (B1)** | East Asia 区域**没有 F1 Linux 套餐** |
+> | 部署方式 | — | ✅ **Deployment Center → GitHub → GitHub Actions** | 自动构建部署 |
+> | 启动命令 | `bash startup.sh` | ✅ 同 | — |
+> | 域名形态 | `<name>.azurewebsites.net` | ⚠️ **带随机后缀** | East Asia 区域的命名规则 |
+>
+> **与原方案的两处偏差及影响**：
+>
+> 1. **Region 改 East Asia** —— Neon 在 `us-west-2`，跨区延迟增加。
+>    实测线上 API 响应 0.5–1.2s（含公网往返），**可接受**，未做优化。
+> 2. **SKU 改 B1 而非 F1** —— B1 是付费档，但 $100 学生额度足够覆盖评审期
+>    （约 $15~20）。**换来一个关键好处：B1 支持 Always On 常驻** →
+>    实例不因空闲回收 → **冷启动实测仅 0.709 秒**（F1 方案需靠 pinger 保温）。
+>
+> ⚠️ **下文各节凡提到 F1 / 60 CPU 分钟 / 免卡的配额核算，均是原方案的推演，
+> 与线上实际配置（B1 + Always On）不符。** 线上真实数据以本节与 §六为准。
+> 保留推演内容是为了留下决策依据 —— 若日后换回 F1 档位，这套分析仍然有效。
+>
+> **线上验收实测（2026-11-08）**：
+>
+> | 检查项 | 结果 |
+> |---|---|
+> | 七端点 200（`/healthz` `/api/health` 五页） | ✅ 全 200 |
+> | `/api/mandates` 无 cookie → 401 | ✅ 401（W-08 鉴权在线上生效） |
+> | 带 cookie → 200 | ✅ 四个 API 全 200 |
+> | cookie 属性 | ✅ `__Host-mandatepay_session` + `Secure` + `HttpOnly` + `SameSite=lax` |
+> | `/budget` 双视图 | ✅ AG Studio 从 jsDelivr CDN 渲染成功 + classic 视图可切换 |
+> | 线上五页纯中文区块 | ✅ 0（Chrome headless 实测） |
+> | CDN 回退自检 | ✅ `/static/vendor/ag-studio.mjs` → 404（未挂载 7MB vendor） |
+> | 冷启动 | ✅ **0.709s**（B1 Always On，远低于 90s 阈值） |
+> | 线上数据 | ✅ 预算 $200 / 已花 $0 / 白名单 [Notion, Figma] |
 
 ---
 
@@ -313,40 +354,73 @@ F1 限制：**60 CPU 分钟/天**、1GB 内存、165MB 带宽/天。三项逐一
 
 ## 五、验收清单（DoD）
 
-部署完成后逐项核对：
+线上 URL：`https://mandatepay-zisen-dph6eucmf4gjckct.eastasia-01.azurewebsites.net`
 
-- [ ] 公开 URL 五个页面全部 200：/ /constraints /budget /approvals /audit
-- [ ] `/budget` 双视图均正常（AG Studio 视图 + 原版视图，切换按钮可用）
-- [ ] 冷启动耗时已记录（首访 + 唤醒后各测一次）
-- [ ] 截图存档
+**实测状态（2026-11-08）：**
+
+- [x] 公开 URL 五个页面全部 200：/ /constraints /budget /approvals /audit
+      —— 实测七端点（含 `/healthz` `/api/health`）全 200
+- [x] `/budget` 双视图均正常（AG Studio 视图 + 原版视图，切换按钮可用）
+      —— Chrome headless 实测：状态栏「✅ AG Studio rendered the budget overview
+      预算总览已渲染 (runtime: jsdelivr CDN)」，`#classicCard` 存在且可切换
+- [x] 冷启动耗时已记录 —— **0.709s**（B1 Always On），见 §6.1
+- [x] 线上五页无纯中文可见区块 —— Chrome headless 实测全部 0
+- [x] CDN 回退确认 —— `--check-cdn` 通过（`/static/vendor/ag-studio.mjs` → 404）
+- [x] 鉴权双向验收 —— 无 cookie 401 / 带 cookie 200 / cookie 带 `Secure` + `__Host-`
+- [ ] **截图存档** —— 待做（Chrome headless 只能取 DOM，截图需手动或补 `--screenshot`）
+- [ ] Webhook 地址从 ngrok 换到 Azure 正式域名 —— 待做（当前仍指向 ngrok 隧道）
+- [ ] 录前数据：清场 + 造 3 笔覆盖三种判定的演示订单 —— 待做
 
 ---
 
 ## 六、冷启动与保温（W-07）
 
-### 6.1 冷启动耗时记录
+### 6.1 冷启动耗时记录（实测：2026-11-08）
+
+线上 URL：`https://mandatepay-zisen-dph6eucmf4gjckct.eastasia-01.azurewebsites.net`
 
 | 场景 | 耗时 | 备注 |
 |---|---|---|
-| 首次构建 | 待填 | Oryx 装依赖 + pip install langchain 链 |
-| 首次访问（冷） | 待填 | App Service 实例启动 + 应用初始化 |
-| 二次访问（热） | 待填 | F1 实例复用，预期 <1 秒 |
-
-**测量方法**（部署后跑）：
+| 首次构建 | ~2 min | Oryx 装依赖 + pip install langchain 链（用户部署时观察，未精确计时） |
+| **首次访问（冷）** | **0.709s** | 实测首访（连打 3 次 `/healthz` 的第 1 次） |
+| **二次访问（热）** | **0.553s** | 取最快一次；第 3 次 1.220s（网络抖动，非服务端） |
 
 ```bash
-python scripts/keep_warm.py --url https://<你的域名>.azurewebsites.net --measure
+python scripts/keep_warm.py --url https://mandatepay-zisen-dph6eucmf4gjckct.eastasia-01.azurewebsites.net --measure
 ```
 
-连打 3 次 `/healthz`，输出「首访耗时 vs 热实例耗时」的对比，
-并写入 `cold_start_measure.json` —— 填进上表。
+**结论：冷启动远低于工单 90 秒阈值（0.709s ≈ 阈值的 0.8%）。**
+工单给的精简预案（`uvicorn[standard]` → 裸 uvicorn、查 toolkit 传递依赖）**均不需要执行**。
 
-### 6.2 保温策略（F1 不支持 Always On）
+> ⚠️ **口径提醒**：以上数字是 **B1 套餐 + Always On 常驻**下的结果。
+> B1 的 Always On 让实例不回收，所以"冷启动"只剩进程内首次初始化。
+> 若日后换成 F1（不支持 Always On）或平台回收实例，数字会显著变差 —— 届时需重测。
 
-F1 **不支持 Always On**：闲置后实例可能被平台卸载，首访走冷启动（实测 2-5 CPU 秒）。
-但 F1 有 **60 CPU 分钟/天硬上限**，所以保温必须低频。
+### 6.2 保温策略（实测后修正：线上不需要 pinger）
 
-**采用：单个外部探针 / 30 分钟**（约 1.5 CPU 分钟/天，占预算 2.5%）。
+**线上实际配置：SKU = B1（Basic，Always On 常驻）**，不是原方案的 F1。
+Always On 意味着实例不因空闲被回收 → **不需要外部 pinger 保温**。
+
+原方案（针对 F1）的低频探针设计**保留在 `scripts/keep_warm.py` 里**，
+用途从"保温"转为两件事：
+
+1. **演示前预热**（`--warm`）：打一遍所有页面，让浏览器侧缓存与 JIT 都热起来
+2. **部署后自检**（`--check-cdn`）：确认线上 `/budget` 走 CDN 而非本地 vendor
+
+```bash
+# 演示前预热（推荐，评审当天执行）
+python scripts/keep_warm.py --url <线上URL> --warm
+
+# 部署后自检（已实测通过）
+python scripts/keep_warm.py --url <线上URL> --check-cdn
+#   ✅ /static/vendor/ag-studio.mjs → 404（平台没装 vendor → 回退 CDN）
+#   ✅ /budget 页面 200，含 CDN 回退标记
+```
+
+> **为什么 CDN 自检是必做项**：若 `static/vendor/` 真被挂上去，
+> 7MB × 访问次数会很快吃掉 App Service 的**165MB 带宽/天**上限。
+> 线上实测已确认回退 CDN 生效。
+
 探针**必须跑在 F1 实例外面**（跑在实例里的话，实例卸载时探针一起没了）。
 
 ```bash
