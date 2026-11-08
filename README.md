@@ -457,7 +457,8 @@ mandatepay/
 │   ├── setup_webhook.py          # register webhook subscriptions via REST
 │   ├── deploy_init.sh            # one-shot: schema → seed → catalog → clean
 │   ├── reset_demo_data.py        # clear demo data (keeps constraints)
-│   ├── keep_warm.py              # F1 keep-warm / pre-warm / cold-start probe
+│   ├── seed_demo_scenarios.py    # rebuild the 3 demo transactions (one per decision)
+│   ├── keep_warm.py              # keep-warm / pre-warm / cold-start probe
 │   ├── stress_constraints.py     # 650-judgement stress test, 3 oracles
 │   ├── verify_llm_zai.py         # 20-sentence intent verification + degradation stats
 │   ├── scan_secrets.py           # wide-criteria key scan (tree + full history + self-check)
