@@ -572,9 +572,17 @@ def submit_purchase(body: PurchaseIn):
     # ── AI 洞察与解释（与 LangGraph insight/explain 节点同一批函数）──
     # 判定早已由 evaluate() 定死；这里只**附带** AI 输出，
     # 任何异常都吞掉并降级为 null（决策链不受影响）。
+    #
+    # ⚠️ **有时间预算**（默认 25s，`AGENT_INSIGHT_TIMEOUT_SEC` 可调）：
+    # 实测 Z.ai 免费档从 Azure 出网会被限流，单次 insight 调用可能拖 60s~4min
+    # （退避重试叠加上游排队）。同步接口不能无限期挂着 —— 宁可返回 null，
+    # 也不能让调用方等到 Azure 的 230s 请求超时。
     insight: str | None = None
     explanation: str | None = None
     try:
+        import concurrent.futures
+        import time as _time
+
         from agent.ai_insight import (
             generate_explanation_with_source,
             generate_insight_with_source,
@@ -584,17 +592,37 @@ def submit_purchase(body: PurchaseIn):
         month_start = now[:7] + "-01T00:00:00+00:00"  # 本月 1 号 00:00 UTC
         monthly_spent = store.sum_spent_amount(month_start)
 
-        insight_text, insight_from_llm = generate_insight_with_source(
-            req, constraint, monthly_spent, result.decision.value
+        budget = float(os.getenv("AGENT_INSIGHT_TIMEOUT_SEC", "25"))
+        pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="mp-insight"
         )
-        explanation_text, explanation_from_llm = generate_explanation_with_source(
-            req, constraint, result.decision.value, result.reason, monthly_spent
-        )
-        # 只有 LLM 真的答了才算"AI 输出"；模板兜底不冒充 AI
-        if insight_from_llm:
-            insight = insight_text
-        if explanation_from_llm:
-            explanation = explanation_text
+        try:
+            fut_i = pool.submit(
+                generate_insight_with_source,
+                req, constraint, monthly_spent, result.decision.value,
+            )
+            fut_e = pool.submit(
+                generate_explanation_with_source,
+                req, constraint, result.decision.value, result.reason, monthly_spent,
+            )
+            # 两个调用**并行**发起、各自独立计时，但**整段墙钟只等 budget 秒**
+            # （先 wait 再逐个取结果；顺序取会让总耗时变成 2×budget）。
+            concurrent.futures.wait([fut_i, fut_e], timeout=budget)
+            for fut, key in ((fut_i, "insight"), (fut_e, "explanation")):
+                if not fut.done():
+                    continue          # 超时 → 保持 null
+                try:
+                    text, from_llm = fut.result(timeout=0)
+                except Exception:
+                    continue          # LLM 异常 → 保持 null
+                if from_llm:
+                    if key == "insight":
+                        insight = text
+                    else:
+                        explanation = text
+        finally:
+            # 不等待：超时的 LLM 调用让它在后台自己结束，接口立刻返回
+            pool.shutdown(wait=False)
     except Exception:
         # AI 层任何问题都不许影响本路径的返回与判定
         insight = None

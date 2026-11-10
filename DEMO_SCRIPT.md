@@ -131,6 +131,7 @@
 |---|---|
 | 1 | 跑一遍 `python scripts/stress_constraints.py --seed 42`，截屏留档（收尾口播用） |
 | 2 | 三处 LLM 调用（解析 / 洞察 / 解释）每次约 1–2 秒，**录制前先各跑一遍热身**，避免现场超时 |
+| 2b | ⚠️ **录制前必跑 LLM 预检**：`python scripts/check_llm_health.py` —— Z.ai 免费档限流时会返回 429（1305），而退避重试会让单次调用拖到 200 秒以上；预检报红就**等限流过去再录**（通常几分钟到十几分钟） |
 | 3 | 确认 Demo 稿里的约束句**不会**把 `category_whitelist` 设成非空（"SaaS 预算"只是描述预算用途，不是品类硬过滤 —— 已在 prompt 里区分） |
 | 4 | 线上实例做一次预热：`python scripts/keep_warm.py --url <线上URL> --warm` |
 

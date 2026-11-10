@@ -147,3 +147,35 @@ def test_response_always_has_the_three_marker_fields(monkeypatch):
         assert key in body, f"响应缺少字段 {key}"
     assert body["insight"] == "洞察"
     assert body["explanation"] == "解释"
+
+
+def test_slow_llm_does_not_hang_the_endpoint(monkeypatch):
+    """LLM 卡住 → 到预算就返回 null，不能把接口挂死。
+
+    实测背景：Z.ai 免费档从 Azure 出网会被限流，单次 insight 调用能拖 60s~4min。
+    同步接口不能无限期挂着（Azure 请求超时是 230s），所以有 `AGENT_INSIGHT_TIMEOUT_SEC`
+    预算（默认 25s），到点就降级为 null。
+    """
+    import time
+
+    import agent.ai_insight as ai
+
+    def _slow(*_a, **_kw):
+        time.sleep(30)
+        return ("太慢了", True)
+
+    monkeypatch.setenv("AGENT_INSIGHT_TIMEOUT_SEC", "1")
+    monkeypatch.setattr(ai, "generate_insight_with_source", _slow)
+    monkeypatch.setattr(ai, "generate_explanation_with_source", _slow)
+
+    c, cookie = _client_with_session()
+    t0 = time.time()
+    r = _post(c, cookie)
+    elapsed = time.time() - t0
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["insight"] is None, "超时后必须降级为 null"
+    assert body["explanation"] is None
+    assert body["decision"] == "REJECT", "判定不受 AI 超时影响"
+    assert elapsed < 10, f"接口被 AI 拖了 {elapsed:.1f}s —— 超时预算没生效"
