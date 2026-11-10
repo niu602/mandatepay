@@ -186,10 +186,10 @@ built right now*. Any agent that enforces policy from structured fields will
 have edge cases where the field is missing — and the default behaviour of
 almost every implementation is to skip the check. When the missing field is a
 policy boundary, skipping it is a security failure that no test written after
-the fact would have caught. We only caught it because we generated expectations
-against **three** independent implementations and a human had hand-enumerated
-every case up front, so "the engine agrees with itself" could never be mistaken
-for "the engine is right."
+the fact would have caught. Evaluation was three-layer: **650 randomized stress cases** checked
+against three independent hand-written oracles, **20 human-authored attack fixtures** with
+expectations fixed before the engine ever ran, and **20 intent utterances** with hand-written ground
+truth — so "the engine agrees with itself" could never be mistaken for "the engine is right."
 
 **Impact if this pattern is adopted.** A spend cage is a reusable primitive.
 The same shape — plain-English constraints, a deterministic decision function, a
@@ -209,7 +209,7 @@ after the fact.
 
 *Source: `STRESS_REPORT.md`, `README.md` (§"A real vulnerability we found and
 fixed"), `scripts/stress_constraints.py`, `scripts/verify_llm_zai.py`,
-`LLM_INTENT_VERIFICATION.md`*
+`LLM_INTENT_VERIFICATION.md`, `tests/fixtures/attack_cases.json`*
 
 ---
 
