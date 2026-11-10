@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # ── 语速与限制 ────────────────────────────────────────────
 # 160 wpm ≈ 2.67 词/秒；留一点余量用 2.6（读起来更清楚，且不到 3:00）
 WORDS_PER_SEC = 2.6
-MAX_TOTAL_SEC = 180.0          # 工单要求 < 3:00
+MAX_TOTAL_SEC = 165.0          # 工单要求 ≤ 2:45（比"3 分钟以内"更紧）
 SRT_MAX_LINE_CHARS = 42        # 每行最多 42 字符
 SRT_MAX_LINES = 2              # 每条最多 2 行
 # PayPal order id 的真实长度样本（占位符 <ORDER_ID> 比它短 5 个字符，
@@ -68,8 +68,8 @@ SEGMENTS = [
     {
         "title": "Opening: frame the problem",
         "start": 0.0,
-        "end": 20.0,
-        "zh": "0:00–0:20 · 开场：把问题摆出来",
+        "end": 18.0,
+        "zh": "0:00–0:18 · 开场：把问题摆出来",
         "notes": [
             "Home page on screen, then cut to /constraints.",
             "This segment is narration only — no clicking.",
@@ -85,9 +85,9 @@ SEGMENTS = [
     },
     {
         "title": "Scene 1: one sentence becomes a rule set",
-        "start": 20.0,
-        "end": 55.0,
-        "zh": "0:20–0:55 · 场景一：一句话设定约束",
+        "start": 18.0,
+        "end": 49.0,
+        "zh": "0:18–0:49 · 场景一：一句话设定约束",
         "notes": [
             "Type on screen (spend ~8s):",
             "  Monthly SaaS budget 200 dollars, over 50 ask me first, only Notion and Figma.",
@@ -104,9 +104,9 @@ SEGMENTS = [
     },
     {
         "title": "Scene 2: reasoning, not classification",
-        "start": 55.0,
-        "end": 95.0,
-        "zh": "0:55–1:35 · 场景二：⭐ 异常推理",
+        "start": 49.0,
+        "end": 87.0,
+        "zh": "0:49–1:27 · 场景二：⭐ 异常推理",
         "notes": [
             "Type on screen (spend ~5s):",
             "  Notion and Figma — buy the cheaper one.",
@@ -123,9 +123,9 @@ SEGMENTS = [
     },
     {
         "title": "Scene 3: a rejection that explains itself",
-        "start": 95.0,
-        "end": 130.0,
-        "zh": "1:35–2:10 · 场景三：⭐ 被拒时解释 + 建议",
+        "start": 87.0,
+        "end": 119.0,
+        "zh": "1:27–1:59 · 场景三：⭐ 被拒时解释 + 建议",
         "notes": [
             "Type on screen (spend ~4s):",
             "  Buy Slack Pro, 15 dollars.",
@@ -142,9 +142,9 @@ SEGMENTS = [
     },
     {
         "title": "Scene 4: a human has to nod  (includes Shot ①)",
-        "start": 130.0,
-        "end": 160.0,
-        "zh": "2:10–2:40 · 场景四：人点头才扣款（含镜头①）",
+        "start": 119.0,
+        "end": 147.0,
+        "zh": "1:59–2:27 · 场景四：人点头才扣款（含镜头①）",
         "notes": [
             "Open a PENDING_HUMAN request in /approvals — the popup shows all three layers.",
             "Click “① Pay on PayPal” → sandbox “Complete purchase” → back → click “② I’ve paid · capture”.",
@@ -169,9 +169,9 @@ SEGMENTS = [
     },
     {
         "title": "Closing: audit trail and numbers",
-        "start": 160.0,
-        "end": 179.0,
-        "zh": "2:40–3:00 · 收尾：数据与审计",
+        "start": 147.0,
+        "end": 160.0,
+        "zh": "2:27–2:40 · 收尾：数据与审计",
         "notes": [
             "Cut quickly through /audit (three-layer Mandate list) → /budget (dashboard).",
             "Cut back to the home page at the end.",
@@ -179,7 +179,6 @@ SEGMENTS = [
         "lines": [
             ("Everything is auditable — used, remaining, and month-end projection, all computed.", None),
             ("Every trace_id shows the Intent, Cart and Payment layers — AUTO_APPROVE, REQUIRE_HUMAN, REJECT.", None),
-            ("Six hundred and fifty decisions, three independent implementations. Four wrong-verdict classes — all fixed.", None),
             ("MandatePay — let AI spend, but every cent earns your authorization. Thanks.", None),
         ],
     },
@@ -572,19 +571,21 @@ def main() -> int:
         return 0
 
     # ── 写 md ──
-    header = f"""# MandatePay · Demo Script (EN) — ≤ 3 minutes
+    header = f"""# MandatePay · Demo Script (EN) — ≤ 2:45
 
 > **Read this, then record.** The Chinese script is [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md);
-> this file is the same demo, same timecodes, in English.
+> this file is the same demo in English, on a **compressed timeline**.
 >
-> - **Segment timecodes are identical** to the Chinese script — same second, same thing
->   happening on screen.
+> - **This file owns the timecodes.** The Chinese script has been re-timed to the same
+>   2:40 timeline, so every segment below lines up with its Chinese counterpart.
+>   The Chinese narration is longer — it is reference text, not the recorded track:
+>   **record the English** (`DEMO_SCRIPT_EN.srt` is the subtitle file to load).
 > - **Shot ①** (PayPal Developer Dashboard) lives inside scene 4 — see the click path
 >   in the segment notes; you can follow it without guessing.
 > - **SRT subtitles** live in [`DEMO_SCRIPT_EN.srt`](DEMO_SCRIPT_EN.srt) — every cue is
 >   ≤ 2 lines × 42 characters.
 >
-> **Total runtime: {max(e['end'] for e in entries):.1f}s** (must stay under 180s).
+> **Total runtime: {max(e['end'] for e in entries):.1f}s** (must stay under 165s / 2:45).
 > Reading pace used for the timings: {WORDS_PER_SEC} words/second (~157 wpm).
 >
 > **Terms that are NOT translated** — keep them exactly as written, they are
