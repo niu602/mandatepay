@@ -6,6 +6,7 @@
 3. 审计日志：/api/mandates
 """
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -415,6 +416,33 @@ def health():
         "skip_verify": config.PAYPAL_WEBHOOK_SKIP_VERIFY,
         "subscribed_events": list(SUBSCRIBED_EVENTS),
     }
+
+
+@app.get("/api/ag-license")
+def ag_license():
+    """把 AG Studio 的 license key 交给前端（前端要靠它激活商业授权）。
+
+    为什么需要这个端点
+    ------------------
+    AG Studio 是**前端**库，license 必须在浏览器里用
+    `AgStudioLicenseManager.setLicenseKey(key)` 激活。
+    而 key 不能硬编码进 HTML/JS —— 那等于把凭据发到每个访客手里，
+    也会进 git 历史。所以走「环境变量 → 后端 → 前端 fetch」这条路。
+
+    授权到期时间线
+    --------------
+    trial 约 **12-11** 到期，评审期到 **12-15**。
+    冻结线（11-12 22:00）之后不能改代码，所以**读取路径必须现在落库**；
+    到期那天只要改 Azure 环境变量 `AG_STUDIO_LICENSE` 即可，不用改代码、不用重新部署。
+
+    安全
+    ----
+    - 走**现有的 cookie 会话鉴权**（中间件 `session_auth` 自动覆盖，
+      因为本路径不在 `EXEMPT_PATHS` 里）—— 裸 curl 打这个端点会得到 401。
+      页面同源 fetch 会自动带 cookie，所以前端零改动。
+    - 未配置时返回空字符串，前端就保持 trial 行为 —— **DoD 要求的行为不变**。
+    """
+    return {"key": os.environ.get("AG_STUDIO_LICENSE", "")}
 
 
 # ──────────────────────────────────────────────────────

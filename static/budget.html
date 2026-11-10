@@ -346,6 +346,55 @@ function toggleView() {
       injectImportMap(map);
       const { createStudio } = await import('ag-studio');
 
+      // ── AG Studio license 注入 ──────────────────────────
+      // AG Studio 是前端库，license 必须**在浏览器里**用
+      // AgStudioLicenseManager.setLicenseKey(key) 激活（静态方法）。
+      //
+      // key 从后端拿（/api/ag-license）而不是写死在这里 —— 写死等于
+      // 把凭据发给每个访客，还会进 git 历史。后端读 AG_STUDIO_LICENSE
+      // 环境变量，所以到期换 key 只需改 Azure 环境变量，不用改代码。
+      //
+      // trial 约 12-11 到期，评审期到 12-15。
+      //
+      // ⚠️ 这段**绝不能影响渲染**：任何一步失败都只 console.warn，
+      //    后续的 createStudio / setState / 回退逻辑照常走。
+      //    DoD：未设环境变量时行为与现在完全一致（trial + 警告横幅）。
+      try {
+        // ⚠️ 这个 fetch 是 **await** 的（在 createStudio 之前）——
+        //    因为 license 必须在 AG Studio 初始化**之前**设好，
+        //    它初始化时才会检查授权。所以这里必须等它返回。
+        //    但也正因如此，它挂住就会拖住整个渲染 →
+        //    加 5 秒超时，超时就当"没 key"，继续走 trial。
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        let licRes;
+        try {
+          licRes = await fetch('/api/ag-license', {
+            credentials: 'same-origin',   // 同源会自动带会话 cookie
+            signal: ctrl.signal,
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+        if (licRes.ok) {
+          const { key } = await licRes.json();
+          if (key) {
+            // setLicenseKey 是静态方法；某些版本可能没导出这个类 → 用可选链兜底
+            const LM = (await import('ag-studio')).AgStudioLicenseManager;
+            if (LM && typeof LM.setLicenseKey === 'function') {
+              LM.setLicenseKey(key);
+            } else {
+              console.warn('[AG Studio] license manager unavailable — continuing in trial mode');
+            }
+          }
+          // key 为空 → 什么都不做，保持 trial（不警告，因为这是正常状态）
+        } else {
+          console.warn('[AG Studio] license fetch failed (' + licRes.status + ') — continuing in trial mode');
+        }
+      } catch (e) {
+        console.warn('[AG Studio] license setup skipped — continuing in trial mode:', e);
+      }
+
       let applied = false, api = null;
       const apply = () => {
         if (applied || !api) return; applied = true;

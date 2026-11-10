@@ -65,6 +65,10 @@ FIXED = {
     "LLM_MODEL": "glm-4.7-flash",
     "LLM_THINKING": "disabled",
     "PYTHON_VERSION": "3.11.9",
+    # AG Studio 授权 key —— **默认空**（trial 模式）。
+    # 空值是安全的：前端会跳过 setLicenseKey，行为与没配这个变量完全一样。
+    # 买到 key 后填进 .env 再重新生成 deploy.env 即可（不必手改本文件）。
+    "AG_STUDIO_LICENSE": "",
 }
 
 # 从 .env 取的（值敏感）
