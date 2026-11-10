@@ -1,0 +1,20 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>body{font:14px/1.6 -apple-system,Segoe UI,sans-serif;max-width:1150px;margin:20px auto;padding:0 18px;color:#1a2433}
+img{max-width:420px;border:1px solid #dde;border-radius:5px;margin:8px 12px 8px 0;vertical-align:top;background:#fafbfd}
+h3{color:#1967d2;border-left:4px solid #003087;padding-left:11px}
+tr{vertical-align:top}td{padding:5px 10px 5px 0}</style></head><body>
+<p style="color:#888;font-size:12px">README.md → "### Screenshots" 小节渲染预览（验证五张图可见）</p>
+<h3>Screenshots</h3><br>All five are captured from the live instance, not from mock-ups.<br><tr><td>Page</td><td>What it shows </td></tr>
+|---|---|
+<tr><td><img src="file:///D:/paypal-ai-hackathon/docs/screenshots/01-pay.png" alt="PayPal checkout page"></td><td><b>`/` — the PayPal sandbox checkout button.</b> The web payment path: the buyer approves in the PayPal popup and the page captures the order to `COMPLETED`. </td></tr>
+<tr><td><img src="file:///D:/paypal-ai-hackathon/docs/screenshots/02-constraints.png" alt="Constraint setup page"></td><td><b>`/constraints` — one sentence in, structured rules out.</b> The rule cards show the parsed monthly budget, per-transaction threshold, daily threshold and both allowlists; the demo panel below runs the same sentence through the agent. </td></tr>
+<tr><td><img src="file:///D:/paypal-ai-hackathon/docs/screenshots/03-approvals.png" alt="Approval desk"></td><td><b>`/approvals` — the human-authorisation half of the loop.</b> Each request carries its decision badge; the `PENDING_HUMAN` one offers the &quot;Go to PayPal&quot; + &quot;I paid, capture it&quot; button pair. </td></tr>
+<tr><td><img src="file:///D:/paypal-ai-hackathon/docs/screenshots/04-audit.png" alt="Three-layer Mandate audit"></td><td><b>`/audit` — every transaction as three cards.</b> One row per transaction, showing the Intent / Cart / Payment layers side by side under a shared `trace_id`, with all three verdicts visible. </td></tr>
+<tr><td><img src="file:///D:/paypal-ai-hackathon/docs/screenshots/05-budget-agstudio.png" alt="AG Studio budget dashboard"></td><td><b>`/budget` — the AG Studio dashboard.</b> Monthly budget, committed spend, remaining and projected month-end, all computed from the same records. If the AG Studio runtime cannot load, the page falls back to a hand-built classic view automatically. </td></tr><br><h3>The three scenarios (expected decisions)</h3><br>With the default constraints — monthly budget <b>$200</b>, per-transaction threshold <b>$50</b>,
+vendor allowlist <b>[Notion, Figma]</b>:<br><tr><td>Purchase</td><td>Decision</td><td>Why </td></tr>
+|---|---|---|
+<tr><td>Notion Pro · $10</td><td>`AUTO_APPROVE`</td><td>Vendor allowlisted, well under the threshold </td></tr>
+<tr><td>Figma Enterprise · $80</td><td>`REQUIRE_HUMAN`</td><td>Allowlisted but over the $50 threshold → stops and asks a human </td></tr>
+<tr><td>Slack Pro · $15</td><td>`REJECT`</td><td>Not on the allowlist → refused outright, with an explanation of how to fix it </td></tr><br>&gt; These are <b>not hardcoded</b>. The decisions come out of `agent/constraints.py::evaluate()`,
+&gt; a pure function, and the table above is what that function actually returns
+&gt; (verified against the production engine, not asserted by hand).<br>---<br></body></html>

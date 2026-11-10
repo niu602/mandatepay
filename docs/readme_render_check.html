@@ -1,0 +1,364 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>body{font:13px/1.55 -apple-system,Segoe UI,sans-serif;max-width:1150px;margin:18px auto;padding:0 16px;color:#1a2433}
+img{max-width:300px;border:1px solid #dde;border-radius:4px;margin:6px 8px 6px 0;vertical-align:top;background:#fafbfd}
+h2{color:#003087;border-bottom:2px solid #003087;margin-top:24px}h3{color:#1967d2;margin-top:18px;border-left:3px solid #e8f0fe;padding-left:9px}
+tr{border-bottom:1px solid #f0f0f0}td{padding:3px 8px 3px 0;vertical-align:top}</style></head><body># MandatePay — A Company Card for AI Agents<br>&gt; <b>A company card for AI agents: rules in plain English, spending in bounds, every dollar audited.</b><br>PayPal AI Hackathon 2026 · Submission deadline: <b>2026-11-13 04:00 Beijing time</b><br>Today an AI can write code, send email, and book meetings — but nobody grants an AI
+payment authority, because the money is gone if it goes wrong. MandatePay gives an AI
+agent a <b>spending cage</b>: the user states constraints in plain English (monthly budget,
+vendor allowlist, per-transaction threshold), and the agent executes purchases inside
+those bounds. Every transaction produces a <b>three-layer Mandate record</b>
+(Intent → Cart → Payment) that can be audited line by line.<br><b>The pitch in one line:</b> everyone else is building *&quot;an AI that buys things.&quot;*
+We are building *&quot;an AI that is allowed to buy things.&quot;*<br>&lt;!-- DEPLOYED_URL --&gt;
+<b>Live instance:</b> &lt;https://mandatepay-zisen-dph6eucmf4gjckct.eastasia-01.azurewebsites.net&gt;
+&lt;sub&gt;Azure App Service (B1, East Asia) · sandbox mode · public URL, no login required&lt;/sub&gt;<br>Prefer to run it yourself? The instructions right below are the primary path —
+15 minutes, no questions asked.<br><hr><br><h2>Target award</h2><br><b>Best Use of Agentic Commerce</b> ($5,000)<br><hr><br><h2>Run it in 15 minutes</h2><br>This is the part that matters most — a stranger should be able to clone this and get it
+running without asking a single question.<br><h3>1. Requirements</h3><br><tr><td>Requirement</td><td>Version</td><td>Notes </td></tr>
+|---|---|---|
+<tr><td>Python</td><td>3.11+</td><td>3.11.9 pinned in `.python-version` (platforms default to 3.14, which is too new) </td></tr>
+<tr><td>pip packages</td><td>see `requirements.txt`</td><td>installs in ~1–2 min </td></tr>
+<tr><td>Database</td><td><b>optional</b></td><td>SQLite by default (zero config). PostgreSQL only if you want it </td></tr>
+<tr><td>PayPal account</td><td><b>required</b></td><td>Sandbox credentials, free — steps below </td></tr>
+<tr><td>LLM endpoint</td><td><b>optional</b></td><td>Any OpenAI-compatible endpoint. Without a key the agent falls back to rule-based parsing </td></tr><br>```bash
+git clone https://github.com/niu602/mandatepay.git
+cd mandatepay
+python -m venv .venv &amp;&amp; source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```<br><h3>2. Get your PayPal sandbox credentials (3 steps, ~3 minutes)</h3><br>1. Go to <b>developer.paypal.com/dashboard/applications/sandbox</b>
+   → sign in (create a developer account if you don&#x27;t have one).
+2. Switch the <b>Sandbox / Live</b> toggle to <b>Sandbox</b> (top right), then open the
+   <b>Apps &amp; Credentials</b> tab → <b>REST API apps</b> → <b>Create App</b>.
+   Give it any name (e.g. `mandatepay`) and pick type <b>Merchant</b>.
+3. Copy <b>Client ID</b> and <b>Secret</b> from the app page (the &quot;Sandbox&quot; tab, not Live).<br>Then create a <b>sandbox buyer account</b> to pay with:<br>- <b>developer.paypal.com → Testing Tools → Sandbox Accounts</b> → <b>Personal</b> account
+  → <b>Create Account</b>. Give it an email and a password you can remember.
+  Fund it (sandbox balance is fake money — give it $5,000).
+- <b>Sandbox test card</b> (works at the API level, used by the automated regression test):
+  VISA `4333134069790191`, expiry `11/31` (i.e. 2031-11), any 3-digit CSC.<br><h3>3. Configure</h3><br>```bash
+cp .env.example .env
+```<br>Fill in `.env` — every value says where to get it:<br>```bash
+# ── PayPal sandbox (from step 2) ────────────────────────────────────
+PAYPAL_MODE=sandbox
+PAYPAL_CLIENT_ID=your_sandbox_client_id      # ← step 2, &quot;Apps &amp; Credentials&quot;
+PAYPAL_CLIENT_SECRET=your_sandbox_secret      # ← step 2, &quot;Apps &amp; Credentials&quot;<br># ── Session signing key (public deployment: strongly recommended) ───
+# Generate: python -c &quot;import secrets; print(secrets.token_urlsafe(48))&quot;
+SESSION_SECRET=                               # ← leave empty locally, it self-derives<br># ── LLM (any OpenAI-compatible endpoint; optional) ──────────────────
+# Z.ai — free tier, sign up with an overseas account:
+LLM_API_KEY=sk-xxxxxxxxxxxxxxxx
+LLM_BASE_URL=https://api.z.ai/api/paas/v4
+LLM_MODEL=glm-4.7-flash<br># ── Database (optional — leave empty for SQLite) ────────────────────
+DATABASE_URL=<br># ── Webhook (optional — see below) ──────────────────────────────────
+PAYPAL_WEBHOOK_ID=
+```<br>&gt; <b>`.env` is gitignored.</b> Never commit real credentials. `scripts/scan_secrets.py`
+&gt; scans the whole working tree *and* the entire git history for leaked keys, and it
+&gt; self-checks its own rules — run it before every commit.<br><h3>4. Initialise and run</h3><br>```bash
+python scripts/init_db.py            # idempotent schema creation (SQLite by default)
+python scripts/seed_catalog_local.py # load the supplier catalog (Notion $10 / Figma $15)
+                                    # ← no PayPal credentials needed for this step<br>python -m uvicorn app.main:app --port 8888
+```<br>Open <b>http://127.0.0.1:8888/</b> — you should see the PayPal sandbox payment page.<br>&gt; <b>Two catalog scripts, and the difference matters:</b>
+&gt;
+&gt; | Script | Needs PayPal credentials | What it does |
+&gt; |---|---|---|
+&gt; | `scripts/seed_catalog_local.py` | ❌ <b>no</b> | Writes the catalog into your local database only. Safe, offline, idempotent. <b>Start here.</b> |
+&gt; | `scripts/setup_catalog.py` | ✅ yes | Creates real products/plans <b>in the PayPal sandbox</b> via the Agent Toolkit, so the agent can order against real `paypal_product_id`s. Optional — run it after you&#x27;ve got credentials. |
+&gt;
+&gt; The local seed is what makes the &quot;clone and run in 15 minutes&quot; path work: you can
+&gt; browse every page and see the catalog without touching PayPal. `seed_catalog_local.py`
+&gt; skips itself if the catalog already has entries, so it never duplicates suppliers.<br><h3>5. Verify it actually works</h3><br>```bash
+# Automated sandbox payment loop (create → simulate approve → capture → assert COMPLETED)
+python -m agent.e2e_check --auto --amount 7.5<br># Constraint engine test suite (113 tests, ~2s, fully offline)
+python -m pytest tests/ -q<br># LLM intent parsing: 20 sentences × 3 runs, with degradation accounting
+python scripts/verify_llm_zai.py --repeat 3 --thinking disabled
+```<br>&gt; <b>Already set up locally?</b> [STARTUP.md](file:///D:/paypal-ai-hackathon/STARTUP.mdSTARTUP.md is the developer quick
+&gt; reference — one-screen start commands, the 30-second post-start self-check,
+&gt; the day-to-day edit→verify→commit loop, Windows/Linux differences, and how to
+&gt; clear leftover ports. This section is the first-time setup path; that one is
+&gt; for day two.<br><hr><br><h2>What each page shows</h2><br><tr><td>Page</td><td>What you see</td><td>Expected result </td></tr>
+|---|---|---|
+<tr><td>`/`</td><td>PayPal sandbox checkout button</td><td>Creates a real sandbox order; the buyer approves in the PayPal popup, then the page captures it → order status `COMPLETED` </td></tr>
+<tr><td>`/constraints`</td><td>One text box + structured rule cards + a live demo panel</td><td>Type a sentence like *&quot;SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma&quot;* → it becomes structured rules; the demo panel shows an <b>insight</b> (spend context) and an <b>explanation</b> (why a decision came out the way it did) </td></tr>
+<tr><td>`/budget`</td><td>AG Studio dashboard: monthly budget used / remaining / projected month-end / per-supplier breakdown</td><td>Renders with real data from `/api/budget/summary`. If the AG Studio runtime can&#x27;t load, the page <b>automatically falls back</b> to a hand-built view — same data, plain HTML </td></tr>
+<tr><td>`/approvals`</td><td>List of purchase requests, each with a decision badge</td><td>Shows `AUTO_APPROVE` / `REQUIRE_HUMAN` / `REJECT`. A `PENDING_HUMAN` request has a <b>&quot;Go to PayPal&quot;</b> + <b>&quot;I paid, capture it&quot;</b> button pair — the human-authorisation half of the loop </td></tr>
+<tr><td>`/audit`</td><td>Every transaction as three stacked cards</td><td>One row per transaction → <b>Intent</b> (what was allowed) / <b>Cart</b> (what was bought) / <b>Payment</b> (how the money moved), tied together by a `trace_id`. Raw JSON is available from `GET /api/mandates` </td></tr><br><h3>Screenshots</h3><br>All five are captured from the live instance, not from mock-ups.<br><tr><td>Page</td><td>What it shows </td></tr>
+|---|---|
+<tr><td><img src="MISSING://PayPal checkout page" alt="![PayPal checkout page](MISSING://PayPal checkout pagedocs/screenshots/01-pay.png"></td><td><b>`/` — the PayPal sandbox checkout button.</b> The web payment path: the buyer approves in the PayPal popup and the page captures the order to `COMPLETED`. </td></tr>
+<tr><td><img src="MISSING://Constraint setup page" alt="![Constraint setup page](MISSING://Constraint setup pagedocs/screenshots/02-constraints.png"></td><td><b>`/constraints` — one sentence in, structured rules out.</b> The rule cards show the parsed monthly budget, per-transaction threshold, daily threshold and both allowlists; the demo panel below runs the same sentence through the agent. </td></tr>
+<tr><td><img src="MISSING://Approval desk" alt="![Approval desk](MISSING://Approval deskdocs/screenshots/03-approvals.png"></td><td><b>`/approvals` — the human-authorisation half of the loop.</b> Each request carries its decision badge; the `PENDING_HUMAN` one offers the &quot;Go to PayPal&quot; + &quot;I paid, capture it&quot; button pair. </td></tr>
+<tr><td><img src="MISSING://Three-layer Mandate audit" alt="![Three-layer Mandate audit](MISSING://Three-layer Mandate auditdocs/screenshots/04-audit.png"></td><td><b>`/audit` — every transaction as three cards.</b> One row per transaction, showing the Intent / Cart / Payment layers side by side under a shared `trace_id`, with all three verdicts visible. </td></tr>
+<tr><td><img src="MISSING://AG Studio budget dashboard" alt="![AG Studio budget dashboard](MISSING://AG Studio budget dashboarddocs/screenshots/05-budget-agstudio.png"></td><td><b>`/budget` — the AG Studio dashboard.</b> Monthly budget, committed spend, remaining and projected month-end, all computed from the same records. If the AG Studio runtime cannot load, the page falls back to a hand-built classic view automatically. </td></tr><br><h3>The three scenarios (expected decisions)</h3><br>With the default constraints — monthly budget <b>$200</b>, per-transaction threshold <b>$50</b>,
+vendor allowlist <b>[Notion, Figma]</b>:<br><tr><td>Purchase</td><td>Decision</td><td>Why </td></tr>
+|---|---|---|
+<tr><td>Notion Pro · $10</td><td>`AUTO_APPROVE`</td><td>Vendor allowlisted, well under the threshold </td></tr>
+<tr><td>Figma Enterprise · $80</td><td>`REQUIRE_HUMAN`</td><td>Allowlisted but over the $50 threshold → stops and asks a human </td></tr>
+<tr><td>Slack Pro · $15</td><td>`REJECT`</td><td>Not on the allowlist → refused outright, with an explanation of how to fix it </td></tr><br>&gt; These are <b>not hardcoded</b>. The decisions come out of `agent/constraints.py::evaluate()`,
+&gt; a pure function, and the table above is what that function actually returns
+&gt; (verified against the production engine, not asserted by hand).<br><hr><br><h2>Why the agent stops and asks</h2><br>When the agent places an order, PayPal returns `PAYER_ACTION_REQUIRED` and an
+`approval_url`. A human has to open that URL and approve the payment before it can be
+captured.<br><b>This is not a bug. It is the product.</b><br>1. MandatePay&#x27;s entire premise is *&quot;the AI must not spend money behind your back.&quot;*
+   Fully automatic capture contradicts that premise directly.
+2. PayPal&#x27;s own agentic-commerce model is *&quot;a human pre-authorises a scope; the agent
+   acts inside it&quot;* — not *&quot;the agent has the card.&quot;*
+3. Judges evaluate the <b>safety of the interaction</b>, not the degree of automation.<br>So the front-end ships a <b>&quot;Go to PayPal&quot;</b> + <b>&quot;I paid, capture it&quot;</b> button pair:
+<b>human authorises, machine executes.</b> That is the correct shape of agentic commerce.<br>&gt; <b>We deliberately do not automate the browser.</b> Not because it&#x27;s hard — because the
+&gt; failure modes are wrong. PayPal&#x27;s guest checkout treats any non-test email as a new
+&gt; buyer and walks it through account creation (password → date of birth → ID →
+&gt; postcode → address verification → SMS code). Sandbox doesn&#x27;t send SMS, so that path
+&gt; is a dead end. Using the <b>sandbox buyer account</b> avoids the whole flow.
+&gt; See [DEMO_SCRIPT.md](file:///D:/paypal-ai-hackathon/DEMO_SCRIPT.mdDEMO_SCRIPT.md for the recorded findings.<br><hr><br><h2>Architecture</h2><br>```
+                     ┌─────────────────────── Browser ───────────────────────┐
+                     │  /  /constraints  /budget  /approvals  /audit        │
+                     │      (static/*.html — plain HTML, no build step)      │
+                     └───────────────────┬───────────────────────────────────┘
+                                         │ same-origin fetch (session cookie)
+                     ┌───────────────────▼───────────────────────────────────┐
+   REST path         │            FastAPI  (app/main.py)                    │
+   ──────────────►  │  session middleware → 7-node LangGraph state machine  │
+                     └───────────────────┬───────────────────────────────────┘
+                                         │
+        ┌────────────────────────────────┼────────────────────────────┐
+        │                                │                            │
+┌───────▼────────┐            ┌──────────▼─────────┐         ┌────────▼────────┐
+│ PayPal REST    │            │  Constraint engine  │         │  LLM intent     │
+│ Orders v2      │            │  (agent/            │         │  parser         │
+│ (app/          │            │   constraints.py)   │         │ (agent/         │
+│  paypal_client)│            │  pure function      │         │  llm_intent.py) │
+└────────────────┘            │  89 unit tests      │         │ OpenAI protocol │
+                             └──────────┬──────────┘         └─────────────────┘
+                                        │
+                         ┌──────────────▼──────────────┐
+                         │  Three-layer Mandate         │
+                         │  Intent → Cart → Payment     │
+                         │  (agent/store.py, PG/SQLite) │
+                         └─────────────────────────────┘
+```<br><h3>The seven-node state machine</h3><br><tr><td>Node</td><td>Role</td><td>AI? </td></tr>
+|---|---|---|
+<tr><td>`parse_node`</td><td>Natural language → structured `PurchaseRequest`</td><td>✅ LLM function calling </td></tr>
+<tr><td>`validate_node`</td><td>Evaluate against the constraint engine</td><td>❌ <b>deterministic</b> </td></tr>
+<tr><td>`insight_node`</td><td>&quot;You&#x27;ve spent $170 of $200 this month; this $10 fits, $20 left&quot;</td><td>✅ LLM </td></tr>
+<tr><td>`explain_node`</td><td>&quot;Blocked: over your $50 threshold — raise it or split the order&quot;</td><td>✅ LLM </td></tr>
+<tr><td>`approve_node`</td><td>Decide AUTO_APPROVE / REQUIRE_HUMAN / REJECT</td><td>❌ <b>deterministic</b> </td></tr>
+<tr><td>`pay_node`</td><td>Create the real sandbox order via PayPal Agent Toolkit</td><td>❌ </td></tr>
+<tr><td>`verify_node`</td><td>Confirm the order state</td><td>❌ </td></tr><br>&gt; <b>Hard rule: constraint checking and approval decisions are deterministic code, never
+&gt; the LLM.</b> The model decides *what the user meant*; the engine decides *whether it&#x27;s
+&gt; allowed*. Both AI nodes have pure-template fallbacks, so the demo never breaks even
+&gt; if the endpoint is down.<br><hr><br><h2>LLM endpoint: fully swappable</h2><br>Intent parsing speaks the standard <b>OpenAI protocol</b>, so <b>any OpenAI-compatible
+endpoint works</b> — change three environment variables, zero business-code changes.<br><tr><td>Endpoint</td><td>`LLM_BASE_URL`</td><td>`LLM_MODEL` </td></tr>
+|---|---|---|
+<tr><td><b>Z.ai</b> (used here, free tier, overseas sign-up)</td><td>`https://api.z.ai/api/paas/v4`</td><td>`glm-4.7-flash` </td></tr>
+<tr><td>Tencent MaaS</td><td>`https://tokenhub.tencentmaas.com/v1`</td><td>`glm-5.3-flash` </td></tr>
+<tr><td>DeepSeek</td><td>`https://api.deepseek.com`</td><td>`deepseek-chat` </td></tr>
+<tr><td>OpenAI</td><td>`https://api.openai.com/v1`</td><td>`gpt-4o-mini` </td></tr><br><b>Measured on Z.ai `glm-4.7-flash`: 20 sentences × 3 runs = 60/60 correct, 20/20 stable
+across runs, 0 silent degradations.</b> The 20-sentence set covers all three decision
+scenarios plus threshold boundaries ($50 vs $50.01) and two reasoning cases (price
+comparison across the catalog, and disambiguation by product category).<br>The expected outcomes are <b>hand-enumerated and frozen in the script&#x27;s `CASES` table</b> —
+not model self-assessment, not back-filled after the fact — and the decisions come from
+the same `evaluate()` the production server uses. Full report:
+[LLM_INTENT_VERIFICATION.md](file:///D:/paypal-ai-hackathon/LLM_INTENT_VERIFICATION.mdLLM_INTENT_VERIFICATION.md.<br><b>Engineering note — free-tier 429s are normal.</b> Free endpoints randomly return `429`
+with code `1305` (overloaded) or `1302` (rate limited); measured success rate at peak
+was ~20%. That&#x27;s endpoint capacity, not a code bug. Three layers handle it:
+client-side rate limiting (`LLM_MIN_INTERVAL`), exponential backoff with ±30% jitter
+(8→16→32→45s, 6 attempts), and <b>observable degradation</b> — `agent/llm_intent.py`
+maintains counters (`calls`/`success`/`rate_limited`/`retries`/`degraded`/`no_tool_call`)
+so a report can never claim &quot;verified&quot; while the AI path was silently down.<br><hr><br><h2>Three ways to reach PayPal — and why you need all three</h2><br><tr><td>Path</td><td>Used for</td><td>What it covers that the others don&#x27;t </td></tr>
+|---|---|---|
+<tr><td><b>REST Orders v2</b></td><td>The web checkout page</td><td>The canonical API every integration starts with. Verified end-to-end with a real completed sandbox order </td></tr>
+<tr><td><b>PayPal Agent Toolkit</b></td><td>The LangGraph agent</td><td>The official agent-native toolkit — same sandbox account, different SDK shape (note: its `create_order` payload differs from REST&#x27;s `purchase_units[].amount.value`) </td></tr>
+<tr><td><b>PayPal MCP Server</b></td><td>Capability extension</td><td>The official tool-call protocol. <b>One capability wired up</b> (`invoices.list`); see below for why it cannot replace the other two </td></tr><br>All three talk to the <b>same sandbox account and the same MandatePay constraint engine</b>
+— the guarantee that money stays in bounds does not depend on which integration path
+a purchase came in through.<br><h3>The MCP capability we wired — and why it can&#x27;t replace REST or the Toolkit</h3><br>`agent/mcp_client.py` speaks the MCP protocol directly over stdio (JSON-RPC 2.0,
+newline-delimited JSON) to the official PayPal MCP server (`@paypal/mcp`, run via
+`npx`). We wired <b>one</b> tool: <b>`invoices.list`</b> — listing invoices is something
+neither REST Orders v2 nor our Toolkit wrapper covers.<br>It was verified end-to-end, not just wired: creating an invoice through
+`invoices.create` returned `INV2-CG5H-58YR-9KCR-VP8P`, and `invoices.list`
+then returned that same invoice back from PayPal&#x27;s sandbox.<br><b>Why MCP cannot replace the other two paths</b> — and this is a design property,
+not a preference:<br>&gt; The official MCP server exposes <b>28 tools</b>, and many of them move money
+&gt; directly: `orders.capture`, `payments.createRefund`, `subscriptions.cancel`,
+&gt; `pay_order`, `invoices.send`, `disputes.create` …
+&gt;
+&gt; MCP is a *tool-call protocol* — it executes what the tool says, immediately,
+&gt; with no policy layer in between. REST and the Toolkit both pass through
+&gt; MandatePay&#x27;s `evaluate()` <b>before</b> anything happens.<br>So an agent given raw MCP access could capture an order or cancel a subscription
+without the constraint engine ever seeing it — which is precisely the failure mode
+this project exists to prevent. MandatePay therefore keeps MCP behind a gate
+(`agent/mcp_guarded.py`):<br><tr><td>| REST / Toolkit (our implementation)</td><td>Raw MCP access </td></tr>
+|---|---|---|
+<tr><td>Money movement</td><td>Always goes through `evaluate()` first</td><td>Executes directly — <b>bypasses the constraint engine</b> </td></tr>
+<tr><td>Scope</td><td>Only the operations we implemented</td><td>All 28 official tools, including refunds and subscription cancellation </td></tr>
+<tr><td>Audit trail</td><td>Every decision produces Intent/Cart/Payment records</td><td>No Mandate record is produced </td></tr><br>Concretely, `agent/mcp_guarded.py` maintains a <b>read-only allowlist</b>
+(`invoices.list`) and an explicit <b>money-moving denylist</b>
+(9 tools, each with the reason it is blocked). A blocked tool is rejected
+*before* any PayPal API call is made — it never even starts the MCP process.<br>```bash
+# See the whole thing work: read-only tool fetches real data,
+# money-moving tools are blocked before any call is made
+python scripts/demo_mcp.py
+```<br>&gt; <b>The MCP path needs Node.js 18+</b> (the official server runs via `npx`).
+&gt; Everything else in this project is pure Python — the MCP capability is the one
+&gt; optional extra that pulls in a Node runtime. The Python side is a hand-rolled
+&gt; stdio JSON-RPC client precisely to avoid adding an MCP SDK dependency to the
+&gt; deployment (which would slow the build and the cold start).
+&gt;
+&gt; The remote PayPal MCP endpoint (`mcp.sandbox.paypal.com`) is <b>not</b> usable
+&gt; here: it only accepts tokens from its own OAuth authorization-code + PKCE
+&gt; flow, which needs an interactive browser login. The local stdio server accepts
+&gt; the ordinary client-credentials token, so that&#x27;s the path we use.<br><hr><br><h2>AG Studio: dashboards defined by code, decisions still in tested code</h2><br>The `/budget` page is rendered by [AG Studio](MISSING://AG Studiohttps://www.ag-grid.com/ag-studio/ —
+but with a deliberate split:<br>1. <b>The dashboard is pre-defined in code.</b> `createStudio()` + `setState()` in
+   `static/budget.html` describe the KPIs, charts and layout programmatically. No one
+   drags widgets in an editor; the dashboard is reviewable in a diff.
+2. <b>Rendering and decision-making are separated.</b> AG Studio owns *presentation* —
+   KPI tiles, charts, cross-filtering. The <b>budget arithmetic and every constraint
+   decision stay in our own testable Python</b>. The 650-judgement stress report
+   ([STRESS_REPORT.md](file:///D:/paypal-ai-hackathon/STRESS_REPORT.mdSTRESS_REPORT.md) is the reason we&#x27;re comfortable doing it that way.<br>The backend was <b>not modified</b> to adopt AG Studio — `/budget` reads the same
+`/api/budget/summary` endpoint it always did, and the page shapes the data client-side.
+AG Studio is an npm commercial product with a 45-day free trial (fully functional, no
+UI watermark). The page probes for a local runtime and <b>falls back to jsDelivr CDN</b>
+if it isn&#x27;t installed — so a fresh clone works with zero extra setup, and if the
+runtime ever fails to load the page degrades to a hand-built view instead of a blank page.<br><hr><br><h2>A real vulnerability we found and fixed</h2><br>The constraint engine is stress-tested against <b>three independent oracle
+implementations</b> (a spec-literal one, one reproducing the pre-fix behaviour, and one
+derived from user intuition) over 50 random constraints × 13 requests = <b>650
+judgements</b>, 550 of them adversarial.<br>One finding mattered:<br>&gt; <b>Class F — category allowlist silently skipped when the category is unknown.</b>
+&gt; 170 of 650 cases (<b>26.15%</b>). When a constraint restricted the allowed *categories*
+&gt; but the incoming request carried no category field, the category check was skipped
+&gt; entirely — the constraint was effectively void. A security hole, not a cosmetic one.<br>The fix: an unknown category with a category allowlist set now returns
+`REQUIRE_HUMAN` instead of silently passing — not a hard reject (the field is often
+legitimately absent, and rejecting would break legitimate purchases), but never a
+silent allow. After the fix: <b>0 false rejects, 0 false allows.</b><br>The other findings were over-strict rejections — `notion` vs `Notion`, a stray space
+from copy-paste — now fixed by normalising the comparison.<br>&gt; ⚠️ <b>Precise wording matters here:</b> 26.15% is the <b>pre-fix</b> figure. The
+&gt; vulnerability is <b>found and closed</b>. This is a closed-loop story, not a live hole.
+&gt; See [STRESS_REPORT.md](file:///D:/paypal-ai-hackathon/STRESS_REPORT.mdSTRESS_REPORT.md for the full breakdown.<br><b>The methodology point worth stealing:</b> the stress test does <b>not</b> use the engine
+as its own answer key — that would be no test at all. Instead it re-derives every
+expected verdict from <b>three hand-written oracle implementations</b>, each written
+against the constraint specification rather than against the engine&#x27;s code, so they
+share no evaluation logic with what they are checking:<br><tr><td>Oracle</td><td>What it encodes</td><td>What it catches </td></tr>
+|---|---|---|
+<tr><td><b>strict</b></td><td>the engine&#x27;s current specification</td><td>whether the <b>implementation</b> drifted from the spec </td></tr>
+<tr><td><b>legacy</b></td><td>the <b>pre-fix</b> semantics</td><td>what users had actually been experiencing </td></tr>
+<tr><td><b>product</b></td><td>what a user would reasonably expect</td><td>the false rejects and false allows people hit </td></tr><br>The <b>cases are randomly generated</b> (50 random constraints × 13 requests = 650,
+550 of them adversarial), but the <b>expectations are code, not model output</b> —
+every oracle is a deterministic function, so a verdict can never be &quot;whatever the
+model felt like saying&quot;. The LLM only ever explains *why* something is a
+vulnerability; it never enters the decision chain, and it never gets a vote on the
+verdict.<br>&gt; This is a different claim from the one in [Intent
+&gt; verification](MISSING://Intent
+&gt; verification#llm-endpoint-fully-swappable below, and the distinction matters:
+&gt; the 20 intent sentences *are* hand-enumerated and frozen in
+&gt; `scripts/verify_llm_zai.py`&#x27;s `CASES` table, because there the question is
+&gt; &quot;did the LLM parse this correctly?&quot;. Here the question is &quot;does the constraint
+&gt; engine agree with three independent readings of its own spec?&quot; — so the cases
+&gt; are generated and the expectations are computed.<br><hr><br><h2>API authentication</h2><br>`/api/*` requires a <b>signed session cookie</b>. The page routes are exempt and issue
+the cookie on visit, so <b>the front-end needs zero changes</b> — same-origin `fetch`
+carries it automatically.<br>```bash
+curl -i https://&lt;host&gt;/api/mandates            # → 401 (no cookie)
+curl -c cookies.txt https://&lt;host&gt;/audit        # get a session
+curl -b cookies.txt https://&lt;host&gt;/api/mandates # → 200
+```<br>Exempt: the five page routes, `/healthz`, `/api/health`, and <b>`/api/webhook`</b>
+(PayPal calls that endpoint server-to-server and cannot carry a browser cookie — it has
+official PayPal signature verification instead). Details:
+[W08_API_AUTH.md](file:///D:/paypal-ai-hackathon/W08_API_AUTH.mdW08_API_AUTH.md.<br><hr><br><h2>Webhook — optional, and the main flow does not depend on it</h2><br><b>The webhook is not required.</b> The core demo loop is *&quot;agent orders → human approves
+on PayPal → click &#x27;I paid, capture it&#x27; → the server captures and marks the Mandate
+COMPLETED.&quot;* That works without a webhook.<br>The webhook exists so that PayPal can *push* status changes (`PAYMENT.CAPTURE.COMPLETED`,
+`CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.DENIED`, `PAYMENT.CAPTURE.PENDING`) instead
+of the server polling. When configured, `/api/webhook` verifies PayPal&#x27;s official
+signature (`PAYPAL-TRANSMISSION-ID` / `-SIG` / `-TIME` / `-CERT-URL` / `-AUTH-ALGO`
+plus `PAYPAL_WEBHOOK_ID`) against PayPal&#x27;s own verification endpoint and <b>only then
+processes the event</b>. Events are stored idempotently by `event_id`.<br>Skip it if you just want to look around. `python scripts/setup_webhook.py --create --url
+&lt;your-public-url&gt;/api/webhook --force` registers it if you want the full loop.<br><hr><br><h2>Deployment (free tier, no credit card)</h2><br>```bash
+# 1. Database — Neon free PostgreSQL (console.neon.tech → create project → copy URI)
+#    Free projects only ever sleep; they are never auto-deleted.
+# 2. App — Azure App Service via Azure for Students (no card required for students)
+#    → Runtime Python 3.11, Deployment Center → GitHub
+#    → Startup Command: bash startup.sh
+#    → Environment variables: DATABASE_URL + PayPal creds + LLM key + SESSION_SECRET
+# 3. Initialise the database
+DATABASE_URL=&lt;neon-uri&gt; bash scripts/deploy_init.sh
+```<br><b>Live instance:</b> &lt;https://mandatepay-zisen-dph6eucmf4gjckct.eastasia-01.azurewebsites.net&gt;
+&lt;sub&gt;Azure App Service (B1, East Asia) · sandbox mode · public URL, no login required&lt;/sub&gt;<br><h3>Generating the environment-variable list</h3><br>Don&#x27;t paste this file by hand — generate it, so it can&#x27;t go stale:<br>```bash
+python scripts/gen_deploy_env.py --database-url &quot;&lt;neon-uri&gt;&quot;
+#   → writes deploy.env (gitignored, contains plaintext secrets)
+#   → then paste the whole file into the platform&#x27;s &quot;Add from .env&quot;
+```<br>The script <b>refuses</b> to generate a file whose `DATABASE_URL` points at
+`127.0.0.1` — a local address deployed to the public internet can never reach its
+own database, and that mistake is easy to make by hand. (It has happened here
+before: a hand-written `deploy.env` sat in the repo root with the local address
+still in it.)<br>Full platform-selection rationale (including the platforms we ruled out and why),
+quota accounting, and the acceptance checklist: <b>[W06_DEPLOY.md](file:///D:/paypal-ai-hackathon/W06_DEPLOY.mdW06_DEPLOY.md</b>.<br>&gt; <b>On the deployed tier:</b> the live instance runs on <b>B1 with Always On enabled</b>,
+&gt; so Azure pings the app root every five minutes and the instance is never
+&gt; reclaimed while idle — no keep-warm daemon is needed. Azure can still restart the
+&gt; instance (config change, platform maintenance); measured cold start after a
+&gt; restart is <b>3.143s</b>, and the pre-warm pass takes a few seconds:
+&gt; [W07_KEEP_WARM.md](file:///D:/paypal-ai-hackathon/W07_KEEP_WARM.mdW07_KEEP_WARM.md.<br><hr><br><h2>Known limitations</h2><br>Stated plainly, because a demo that oversells itself is worse than one that doesn&#x27;t.<br>1. <b>No account system.</b> Any visitor who opens a page gets a session. The goal is to
+   stop casual scripted scraping, <b>not</b> to stop a determined attacker. There is no
+   rate limiting and sessions aren&#x27;t per-user. This is a demo, not a payment product.
+2. <b>The agent cannot complete a payment on its own</b> — by design (see above).
+3. <b>AG Studio runs in trial mode</b> (45 days, fully functional, no UI watermark). The
+   page falls back to a hand-built view if the runtime fails to load.
+4. <b>Free-tier LLM endpoints are unreliable under load</b> (measured ~20% success at
+   peak). Handled with retries and observable degradation, but it is a real constraint.
+5. <b>The LLM is a single point of failure for intent parsing</b> — mitigated by a
+   rule-based fallback, which is why the demo never hard-stops.
+6. <b>The MCP integration is minimal</b> — one capability, deliberately, to avoid
+   disturbing the two verified paths.<br><hr><br><h2>Repository layout</h2><br>```
+mandatepay/
+├── app/
+│   ├── config.py           # reads .env (credentials, sandbox/live switch)
+│   ├── main.py             # FastAPI: pages + all API + session middleware
+│   ├── paypal_client.py    # PayPal REST (token / create order / capture) — web path
+│   └── session.py          # signed session cookie (issue + verify)
+├── agent/
+│   ├── models.py           # Constraint / PurchaseRequest / MandateRecord
+│   ├── constraints.py      # constraint engine (pure function, unit-tested)
+│   ├── intent.py           # intent entry point (LLM first, rules as fallback)
+│   ├── llm_intent.py       # LLM function-calling parser (OpenAI protocol)
+│   ├── ai_insight.py       # the two AI decision nodes (insight / explain)
+│   ├── paypal_tools.py     # PayPal Agent Toolkit wrapper — agent path
+│   ├── mcp_client.py       # MCP protocol client (stdio JSON-RPC) for PayPal MCP server
+│   ├── mcp_guarded.py      # MCP access gate — allowlist + constraint check
+│   ├── graph.py            # 7-node state machine
+│   ├── store.py            # persistence (dual backend: PostgreSQL / SQLite)
+│   ├── e2e_check.py        # payment loop verification script
+│   └── demo.py             # four-scenario end-to-end demo
+├── scripts/
+│   ├── init_db.py                # idempotent schema creation
+│   ├── seed_catalog_local.py     # local catalog seed (no PayPal credentials needed)
+│   ├── setup_catalog.py          # create real products in the PayPal sandbox
+│   ├── setup_webhook.py          # register webhook subscriptions via REST
+│   ├── deploy_init.sh            # one-shot: schema → seed → catalog → clean
+│   ├── reset_demo_data.py        # clear demo data (keeps constraints)
+│   ├── seed_demo_scenarios.py    # rebuild the 3 demo transactions (one per decision)
+│   ├── gen_deploy_env.py         # generate deploy.env (refuses local DATABASE_URL)
+│   ├── demo_mcp.py               # MCP capability demo — read-only works, money tools blocked
+│   ├── keep_warm.py              # pre-warm / cold-start probe / CDN self-check
+│   ├── stress_constraints.py     # 650-judgement stress test, 3 oracles
+│   ├── verify_llm_zai.py         # 20-sentence intent verification + degradation stats
+│   ├── scan_secrets.py           # wide-criteria key scan (tree + full history + self-check)
+│   └── migrate_sqlite_to_pg.py   # SQLite → PostgreSQL migration
+├── static/
+│   ├── index.html          # PayPal checkout page (web path)
+│   ├── constraints.html    # natural-language constraint setup
+│   ├── approvals.html      # approval desk
+│   ├── audit.html          # three-layer Mandate audit + human confirmation
+│   ├── budget.html         # AG Studio dashboard (with classic fallback inside)
+│   └── budget.orig.html    # ARCHIVED pre-AG-Studio snapshot (no route, not a live page)
+├── tests/                  # 139 tests: constraints + session auth + keep-warm + UI English + MCP
+├── Dockerfile / Procfile / startup.sh / render.yaml   # deployment assets
+├── LLM_INTENT_VERIFICATION.md   # 20 × 3 intent parsing report
+├── STRESS_REPORT.md             # 650-judgement constraint stress report
+├── W05_ZAI_MIGRATION.md         # endpoint migration + 429 handling
+├── W06_DEPLOY.md                # deployment record + platform rationale
+├── W07_KEEP_WARM.md             # pre-warm / cold-start / monitoring handbook
+├── W08_API_AUTH.md              # session auth design + DoD
+├── STARTUP.md                   # local dev quick reference (start / verify / troubleshoot)
+└── LICENSE                      # MIT (Copyright 2026 Niu Zisen)
+```<br><hr><br><h2>UI language</h2><br>The five pages are <b>bilingual, English-first</b> — every visible string carries English,
+with the Chinese kept alongside it where it helps (this is a Chinese-voiceover demo with
+English subtitles, so the two are meant to sit together). <b>No visible block is
+Chinese-only.</b><br>Two checks enforce it, and both are cheap to run:<br>```bash
+python scripts/check_ui_english.py     # static — reads the HTML source
+python scripts/check_ui_rendered.py    # headless Chrome — renders each page and checks the result
+```<br>The second one exists because static analysis misses a real case: <b>Chinese that only
+appears after JavaScript runs</b> — e.g. AG Studio&#x27;s KPI labels are pre-defined in
+`createStudio`/`setState`, not in HTML text nodes, and a `&lt;span&gt;` around the Chinese
+splits it into a separate text node that looks Chinese-only in the DOM but renders as
+one bilingual line. Rendering is the only way to be sure.<br>`python -m pytest tests/test_ui_english.py` runs the static half as part of the
+normal suite.<br><hr><br><h2>Rules we held ourselves to</h2><br>- Sandbox only — no real money, ever
+- `.env` never enters git; no secret in code, docs, screenshots or commit history
+- `scripts/scan_secrets.py` (working tree + full history + self-check) before every commit
+- MIT licensed, signed `Niu Zisen`<br><hr><br>*PayPal AI Hackathon 2026 · MandatePay — A Company Card for AI Agents*
+</body></html>

@@ -157,6 +157,18 @@ python scripts/verify_llm_zai.py --repeat 3 --thinking disabled
 | `/approvals` | List of purchase requests, each with a decision badge | Shows `AUTO_APPROVE` / `REQUIRE_HUMAN` / `REJECT`. A `PENDING_HUMAN` request has a **"Go to PayPal"** + **"I paid, capture it"** button pair — the human-authorisation half of the loop |
 | `/audit` | Every transaction as three stacked cards | One row per transaction → **Intent** (what was allowed) / **Cart** (what was bought) / **Payment** (how the money moved), tied together by a `trace_id`. Raw JSON is available from `GET /api/mandates` |
 
+### Screenshots
+
+All five are captured from the live instance, not from mock-ups.
+
+| Page | What it shows |
+|---|---|
+| ![PayPal checkout page](docs/screenshots/01-pay.png) | **`/` — the PayPal sandbox checkout button.** The web payment path: the buyer approves in the PayPal popup and the page captures the order to `COMPLETED`. |
+| ![Constraint setup page](docs/screenshots/02-constraints.png) | **`/constraints` — one sentence in, structured rules out.** The rule cards show the parsed monthly budget, per-transaction threshold, daily threshold and both allowlists; the demo panel below runs the same sentence through the agent. |
+| ![Approval desk](docs/screenshots/03-approvals.png) | **`/approvals` — the human-authorisation half of the loop.** Each request carries its decision badge; the `PENDING_HUMAN` one offers the "Go to PayPal" + "I paid, capture it" button pair. |
+| ![Three-layer Mandate audit](docs/screenshots/04-audit.png) | **`/audit` — every transaction as three cards.** One row per transaction, showing the Intent / Cart / Payment layers side by side under a shared `trace_id`, with all three verdicts visible. |
+| ![AG Studio budget dashboard](docs/screenshots/05-budget-agstudio.png) | **`/budget` — the AG Studio dashboard.** Monthly budget, committed spend, remaining and projected month-end, all computed from the same records. If the AG Studio runtime cannot load, the page falls back to a hand-built classic view automatically. |
+
 ### The three scenarios (expected decisions)
 
 With the default constraints — monthly budget **$200**, per-transaction threshold **$50**,
@@ -398,10 +410,32 @@ from copy-paste — now fixed by normalising the comparison.
 > vulnerability is **found and closed**. This is a closed-loop story, not a live hole.
 > See [STRESS_REPORT.md](STRESS_REPORT.md) for the full breakdown.
 
-**The methodology point worth stealing:** the expected results are hand-enumerated and
-frozen into the repository — *"N attack cases, expectations written by a human, not
-model self-assessment."* The LLM only ever explains *why* something is a vulnerability;
-it never enters the decision chain.
+**The methodology point worth stealing:** the stress test does **not** use the engine
+as its own answer key — that would be no test at all. Instead it re-derives every
+expected verdict from **three hand-written oracle implementations**, each written
+against the constraint specification rather than against the engine's code, so they
+share no evaluation logic with what they are checking:
+
+| Oracle | What it encodes | What it catches |
+|---|---|---|
+| **strict** | the engine's current specification | whether the **implementation** drifted from the spec |
+| **legacy** | the **pre-fix** semantics | what users had actually been experiencing |
+| **product** | what a user would reasonably expect | the false rejects and false allows people hit |
+
+The **cases are randomly generated** (50 random constraints × 13 requests = 650,
+550 of them adversarial), but the **expectations are code, not model output** —
+every oracle is a deterministic function, so a verdict can never be "whatever the
+model felt like saying". The LLM only ever explains *why* something is a
+vulnerability; it never enters the decision chain, and it never gets a vote on the
+verdict.
+
+> This is a different claim from the one in [Intent
+> verification](#llm-endpoint-fully-swappable) below, and the distinction matters:
+> the 20 intent sentences *are* hand-enumerated and frozen in
+> `scripts/verify_llm_zai.py`'s `CASES` table, because there the question is
+> "did the LLM parse this correctly?". Here the question is "does the constraint
+> engine agree with three independent readings of its own spec?" — so the cases
+> are generated and the expectations are computed.
 
 ---
 
