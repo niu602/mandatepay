@@ -44,13 +44,22 @@ _INSIGHT_SYSTEM = """你是 MandatePay 的消费洞察助手。基于给定的�
 - 不要重复"本月已花"以外的冗余信息"""
 
 
-def generate_insight(
+def generate_insight_with_source(
     request: PurchaseRequest,
     constraint: Constraint | None,
     monthly_spent: float,
     decision: str,
-) -> str:
-    """生成一句消费洞察。失败/无 Key 时回退到模板。"""
+) -> tuple[str, bool]:
+    """生成一句消费洞察，**并标明这句是不是 LLM 写的**。
+
+    返回 (文案, 来自_llm)：
+    - `(LLM 文案, True)` —— 模型真的答了
+    - `(模板兜底, False)` —— 无 Key / 调用失败 / 超时
+
+    为什么需要这个标记：结构化快速路径（`/api/agent/requests`）要区分
+    "这是 AI 的洞察" 与 "这是固定模板" —— 前者要标进响应，
+    后者不能冒充 AI 输出（项目对"什么才算 AI 参与"很较真）。
+    """
     budget = constraint.monthly_budget_usd if constraint else 0.0
     remaining = budget - monthly_spent
     # 兜底文案（无 LLM 时也能给出有信息量的一句）
@@ -67,7 +76,19 @@ def generate_insight(
         f"引擎判定：{decision}"
     )
     text = _llm_text(_INSIGHT_SYSTEM, user)
-    return text or fallback
+    if text:
+        return text, True
+    return fallback, False
+
+
+def generate_insight(
+    request: PurchaseRequest,
+    constraint: Constraint | None,
+    monthly_spent: float,
+    decision: str,
+) -> str:
+    """生成一句消费洞察。失败/无 Key 时回退到模板。"""
+    return generate_insight_with_source(request, constraint, monthly_spent, decision)[0]
 
 
 # ── 决策解释（D8）─────────────────────────────────────────────
@@ -80,14 +101,14 @@ _EXPLAIN_SYSTEM = """你是 MandatePay 的约束解释助手。把引擎的判�
 - 控制在 60 字以内，不要罗列规则原文"""
 
 
-def generate_explanation(
+def generate_explanation_with_source(
     request: PurchaseRequest,
     constraint: Constraint | None,
     decision: str,
     reason: str | None,
     monthly_spent: float = 0.0,
-) -> str:
-    """生成决策解释（尤其擅长解释"为什么被拒"+ 给建议）。失败回退到模板。"""
+) -> tuple[str, bool]:
+    """生成决策解释，**并标明这句是不是 LLM 写的**（同 `generate_insight_with_source`）。"""
     budget = constraint.monthly_budget_usd if constraint else 0.0
     threshold = constraint.single_tx_threshold_usd if constraint else 0.0
     # 兜底：按 decision 给一个带建议的固定解释
@@ -110,4 +131,19 @@ def generate_explanation(
         + (f"、本月已花 ${monthly_spent:.2f}" if monthly_spent else "")
     )
     text = _llm_text(_EXPLAIN_SYSTEM, user)
-    return text or fb
+    if text:
+        return text, True
+    return fb, False
+
+
+def generate_explanation(
+    request: PurchaseRequest,
+    constraint: Constraint | None,
+    decision: str,
+    reason: str | None,
+    monthly_spent: float = 0.0,
+) -> str:
+    """生成决策解释（尤其擅长解释"为什么被拒"+ 给建议）。失败回退到模板。"""
+    return generate_explanation_with_source(
+        request, constraint, decision, reason, monthly_spent
+    )[0]

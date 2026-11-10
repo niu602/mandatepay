@@ -493,9 +493,18 @@ def submit_purchase(body: PurchaseIn):
     直接调约束引擎与 PayPal Toolkit，不经自然语言解析，
     避免 LLM/正则抽取误差影响演示稳定性。
 
-    **本路径不产生 AI 洞察与决策解释** —— 这是刻意设计：结构化快速路径
-    只跑确定性约束引擎，不引入任何 LLM 调用，演示稳定性优先。
-    需要 AI 洞察 / 决策解释请走 `/api/agent/parse`（完整 Agent 链）。
+    **AI 洞察与解释（W-14 补齐）**：结构化入参构造完成后，会调用与 LangGraph
+    `insight` / `explain` 节点**同一批函数**（`agent/ai_insight.py`），
+    把消费洞察与决策解释一并返回。LLM 不可用时降级为固定模板，
+    而模板**不冒充 AI 输出** —— 此时 insight / explanation 保持 `null`，
+    响应形态与"未接入 AI"时完全一致。
+
+    **判定链不变（红线）**：decision 只由 `evaluate()` 决定，
+    AI 洞察/解释**不参与**判定；AI 挂了也不影响判定结果。
+
+    已知口径差异（如实记录）：本路径的 `evaluate()` 仍按空 `SpendContext`
+    判定（既有行为，本次不动），而洞察里的"本月已花"取自 store 聚合的
+    已承诺支出 —— 与 `/api/agent/parse` 的口径差异**不是**本次引入的。
     """
     from agent import store
     from agent.constraints import evaluate
@@ -560,18 +569,56 @@ def submit_purchase(body: PurchaseIn):
         except Exception as exc:
             payment_result = {"status": "FAILED", "reason": str(exc)}
 
+    # ── AI 洞察与解释（与 LangGraph insight/explain 节点同一批函数）──
+    # 判定早已由 evaluate() 定死；这里只**附带** AI 输出，
+    # 任何异常都吞掉并降级为 null（决策链不受影响）。
+    insight: str | None = None
+    explanation: str | None = None
+    try:
+        from agent.ai_insight import (
+            generate_explanation_with_source,
+            generate_insight_with_source,
+        )
+
+        now = _now_iso()
+        month_start = now[:7] + "-01T00:00:00+00:00"  # 本月 1 号 00:00 UTC
+        monthly_spent = store.sum_spent_amount(month_start)
+
+        insight_text, insight_from_llm = generate_insight_with_source(
+            req, constraint, monthly_spent, result.decision.value
+        )
+        explanation_text, explanation_from_llm = generate_explanation_with_source(
+            req, constraint, result.decision.value, result.reason, monthly_spent
+        )
+        # 只有 LLM 真的答了才算"AI 输出"；模板兜底不冒充 AI
+        if insight_from_llm:
+            insight = insight_text
+        if explanation_from_llm:
+            explanation = explanation_text
+    except Exception:
+        # AI 层任何问题都不许影响本路径的返回与判定
+        insight = None
+        explanation = None
+
+    note = (
+        "Structured fast path — deterministic decision engine, "
+        "with AI insight/explanation attached. "
+        "Use /api/agent/parse for the full agent chain."
+        if (insight or explanation)
+        else "Structured fast path — deterministic engine only. "
+        "Use /api/agent/parse for the full agent chain."
+    )
+
     return {
         "decision": result.decision.value,
         "reason": result.reason,
         "request": req.model_dump(),
         "mandate": mandate.model_dump(mode="json"),
         "payment_result": payment_result,
-        # 显式标注这条路径的边界（避免调用方误以为洞察/解释缺失是 bug）：
-        # 结构化快速路径只有确定性引擎，没有 AI 节点。
-        "insight": None,
-        "explanation": None,
-        "note": "Structured fast path — deterministic engine only. "
-        "Use /api/agent/parse for the full agent chain.",
+        # insight / explanation：AI 真的答了才有值，否则保持 null（T4 形态）
+        "insight": insight,
+        "explanation": explanation,
+        "note": note,
     }
 
 
