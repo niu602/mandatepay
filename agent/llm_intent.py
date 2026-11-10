@@ -23,11 +23,13 @@
 """
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
 import random
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -95,6 +97,66 @@ def reset_llm_stats() -> None:
     """清零统计（验证脚本每轮测试前调用）。"""
     for k in _STATS:
         _STATS[k] = 0
+
+
+# ── 解析结果缓存（进程内 LRU）────────────────────────────────────
+# 为什么缓存
+# ----------
+# Demo 里同一句话会被反复触发：重试、校验页连点两下"解析并设定约束"、
+# 改一个词再改回来。每一次都打一次 LLM，既慢（一次 1–2s）又烧免费额度
+# （Z.ai 免费档 429 频发）。同一句话的解析结果是确定的，缓存它没有语义风险。
+#
+# 范围：**只缓存 parse**
+# --------------------
+# insight / explain **不缓存**：它们的输入包含"本次判定结果 + 已花费快照"，
+# 同一句话在不同的上下文里应该给出不同文案，缓存会让用户看到过期结论。
+#
+# 生命周期
+# --------
+# 进程内、**不设 TTL**（Demo 进程生命周期短，重启即失效）。
+# 上限 128 条，超了淘汰最老的（LRU）。
+#
+# 约束变了怎么办
+# --------------
+# 缓存键是**输入文本**，但解析的 system prompt 里带着当前约束 ——
+# 约束改了，同一句话可能解析出不同的东西。所以每条缓存额外记一份
+# **约束指纹**：指纹不一致就当未命中（重新解析），避免拿到旧约束下的结果。
+_PARSE_CACHE_MAXSIZE = 128
+_parse_cache: "OrderedDict[str, tuple[str, LLMParseResult]]" = OrderedDict()
+
+
+def _constraint_fingerprint(constraint: Constraint | None) -> str:
+    """约束指纹 —— 约束变了就当缓存未命中。"""
+    if constraint is None:
+        return "none"
+    try:
+        return json.dumps(constraint.model_dump(), sort_keys=True, ensure_ascii=False)
+    except Exception:                                        # noqa: BLE001
+        return repr(constraint)
+
+
+def _parse_cache_get(text: str, fingerprint: str) -> LLMParseResult | None:
+    """命中返回**深拷贝**（调用方可能改结果，不能污染缓存）。"""
+    hit = _parse_cache.get(text)
+    if hit is None:
+        return None
+    cached_fp, result = hit
+    if cached_fp != fingerprint:
+        return None
+    _parse_cache.move_to_end(text)
+    return copy.deepcopy(result)
+
+
+def _parse_cache_put(text: str, fingerprint: str, result: LLMParseResult) -> None:
+    _parse_cache[text] = (fingerprint, copy.deepcopy(result))
+    _parse_cache.move_to_end(text)
+    while len(_parse_cache) > _PARSE_CACHE_MAXSIZE:
+        _parse_cache.popitem(last=False)   # 淘汰最老的
+
+
+def clear_parse_cache() -> None:
+    """清空解析缓存（测试与需要"每次都真打"的地方用）。"""
+    _parse_cache.clear()
 
 _SYSTEM_PROMPT_BASE = """你是 MandatePay 的支付约束解析器，负责把用户的自然语言转成结构化调用。
 
@@ -416,6 +478,7 @@ def _system_prompt(current_constraint: Constraint | None) -> str:
 def parse_with_llm(
     text: str,
     current_constraint: Constraint | None = None,
+    use_cache: bool = True,
 ) -> LLMParseResult | None:
     """用 LLM function calling 解析一句话（支持多轮工具调用）。
 
@@ -424,7 +487,17 @@ def parse_with_llm(
     再问一轮 —— 这就是让 AI 能做**比较 / 消歧 / 查价**而不是只做分类。
 
     返回 LLMParseResult；完全失败或无 key 时返回 None，由调用方降级到规则解析。
+
+    `use_cache=False` 可绕过进程内 LRU —— **验证脚本必须用 False**：
+    它们要测的就是"每次真的打一次 LLM"的降级率，命中缓存会让 60/60 变成
+    假数据（第二三轮零网络请求，降级计数器也不动）。
     """
+    fingerprint = _constraint_fingerprint(current_constraint)
+    if use_cache:
+        cached = _parse_cache_get(text, fingerprint)
+        if cached is not None:
+            return cached
+
     client = _client()
     if client is None:
         return None
@@ -514,5 +587,7 @@ def parse_with_llm(
         break
 
     if result.constraint or result.request:
+        if use_cache:
+            _parse_cache_put(text, fingerprint, result)
         return result
     return None

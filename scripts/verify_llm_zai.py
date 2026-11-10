@@ -140,7 +140,9 @@ def _judge(case: Case) -> tuple[str, str | None, float | None, str | None]:
     # _STATS 是累计计数器，直接看 "degraded > 0" 会把之前的过载算到本次头上，
     # 误判成"模型问题"。必须比较调用前后的差值。
     before = llm_stats()
-    res = parse_with_llm(case.text, current_constraint=TEST_CONSTRAINT)
+    # use_cache=False：这个脚本要测的就是"每次都真打一次 LLM"的降级率，
+    # 命中进程内缓存会让降级计数器不涨 —— 60/60 变成假数据。
+    res = parse_with_llm(case.text, current_constraint=TEST_CONSTRAINT, use_cache=False)
     after = llm_stats()
     degraded_delta = after["degraded"] - before["degraded"]
     no_tool_delta = after["no_tool_call"] - before["no_tool_call"]

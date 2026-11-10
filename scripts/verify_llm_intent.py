@@ -73,7 +73,9 @@ def main() -> int:
         intents: list[str] = []
         traces: list[str] = []
         for _ in range(args.repeat):
-            res = parse_with_llm(text)
+            # use_cache=False：验证要测的是"每次真的打一次 LLM"的正确率，
+            # 命中进程内缓存会让第二三轮零网络请求 —— 那是假数据。
+            res = parse_with_llm(text, use_cache=False)
             if res is None:
                 intent, payload = "", None
             else:
