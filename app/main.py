@@ -99,7 +99,7 @@ async def session_auth(request: Request, call_next):
 
     if path.startswith("/api/") and path not in EXEMPT_PATHS:
         cookie_header = request.headers.get("cookie")
-        if not session.verify_cookie(cookie_header, user_agent=request.headers.get("user-agent")):
+        if not session.verify_cookie(cookie_header):
             return JSONResponse(
                 status_code=401,
                 content={
@@ -117,7 +117,6 @@ async def session_auth(request: Request, call_next):
         forwarded = request.headers.get("x-forwarded-proto", "")
         is_https = request.url.scheme == "https" or forwarded.split(",")[0].strip() == "https"
         cookie_name, cookie_value = session.issue_cookie_parts(
-            user_agent=request.headers.get("user-agent"),
             secure=is_https,
         )
         response.set_cookie(
@@ -493,6 +492,10 @@ def submit_purchase(body: PurchaseIn):
 
     直接调约束引擎与 PayPal Toolkit，不经自然语言解析，
     避免 LLM/正则抽取误差影响演示稳定性。
+
+    **本路径不产生 AI 洞察与决策解释** —— 这是刻意设计：结构化快速路径
+    只跑确定性约束引擎，不引入任何 LLM 调用，演示稳定性优先。
+    需要 AI 洞察 / 决策解释请走 `/api/agent/parse`（完整 Agent 链）。
     """
     from agent import store
     from agent.constraints import evaluate
@@ -563,6 +566,12 @@ def submit_purchase(body: PurchaseIn):
         "request": req.model_dump(),
         "mandate": mandate.model_dump(mode="json"),
         "payment_result": payment_result,
+        # 显式标注这条路径的边界（避免调用方误以为洞察/解释缺失是 bug）：
+        # 结构化快速路径只有确定性引擎，没有 AI 节点。
+        "insight": None,
+        "explanation": None,
+        "note": "Structured fast path — deterministic engine only. "
+        "Use /api/agent/parse for the full agent chain.",
     }
 
 

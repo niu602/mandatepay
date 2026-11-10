@@ -15,13 +15,26 @@ cookie 方案下：页面路由访问时下发一个签名 cookie，页面内fet
 安全目标是'挡住裸脚本批量拉数据'，不是'做账号体系'。"
 
 所以本模块做的是：
-  - cookie **带HMAC-SHA256 签名** → 篡改即失效（不是明文 base64）
+  - cookie **带 HMAC-SHA256 签名** → 篡改即失效（不是明文 base64）
   - 短有效期（默认 8 小时）→ 泄露的 cookie 不会长期可用
-  - **绑定 User-Agent 摘要** → 复制 cookie 到别的客户端也用不了
   - `HttpOnly` → JS 读不到（XSS 也偷不走）；`SameSite=Lax` → 防 CSRF
   - 密钥**从环境变量派生**，不新增必填环境变量（见下）
 
 不做什么：不做账号体系、不做登录表单、不做速率限制、不防定向扫描。
+
+为什么**不绑定 User-Agent**
+-------------------------
+曾经把 UA 摘要写进 payload（`{issued_at}.{ua_digest}`），校验时必须 UA 一致。
+现在去掉了，理由有两条，都很实在：
+
+1. **UA 本来就能伪造** —— 它不是有效防线，只是"纵深防御的一层"，
+   而这一层挡不住任何有心的攻击者，却挡得住正常用户。
+2. **它会误伤真实用户** —— 浏览器升级、Chrome 换版本、移动端切网络、
+   公司代理改写 UA，都会让一个本来有效的 cookie 突然 401。
+   在"评审现场打开页面必须立刻能用"的前提下，这是不可接受的风险。
+
+签名 + 过期两道已经把"裸脚本批量拉数据"挡在门外（裸请求没有 cookie → 401），
+不依赖 UA 绑定。
 """
 
 from __future__ import annotations
@@ -100,36 +113,27 @@ def _sign(payload: str) -> str:
     return _b64e(hmac.new(_SECRET, payload.encode("ascii"), hashlib.sha256).digest())
 
 
-def _ua_digest(ua: str | None) -> str:
-    """User-Agent 摘要。
-
-    绑定 UA 是为了让"复制 cookie 到别的客户端"失效。
-    **不是**主要防线（UA 可伪造），是纵深防御的一层。
-    """
-    return _b64e(hashlib.sha256((ua or "").encode("utf-8")).digest()[:8])
-
-
-def issue_cookie_parts(user_agent: str | None = None, secure: bool = False) -> tuple[str, str]:
+def issue_cookie_parts(secure: bool = False) -> tuple[str, str]:
     """签发会话 cookie，返回 (name, value)。
 
-    payload 格式：`<issued_at>.<ua_digest>`
+    payload 格式：`<issued_at>`（只有签发时间，**不含 UA 摘要**）
     签名：`hmac_sha256(secret, payload)`
     cookie 值：`<payload>.<signature>`
     """
     issued_at = int(time.time())
-    payload = f"{issued_at}.{_ua_digest(user_agent)}"
+    payload = f"{issued_at}"
     sig = _sign(payload)
     value = f"{payload}.{sig}"
     name = _COOKIE_NAME_HTTPS if secure else _COOKIE_NAME_HTTP
     return name, value
 
 
-def issue_cookie(user_agent: str | None = None, secure: bool = False) -> str:
+def issue_cookie(secure: bool = False) -> str:
     """签发一个会话 cookie，返回完整的 Set-Cookie 头值。
 
     形如：`name=value; Path=/; Max-Age=28800; HttpOnly; SameSite=Lax[; Secure]`
     """
-    name, value = issue_cookie_parts(user_agent=user_agent, secure=secure)
+    name, value = issue_cookie_parts(secure=secure)
     parts = [
         f"{name}={value}",
         "Path=/",
@@ -145,14 +149,15 @@ def issue_cookie(user_agent: str | None = None, secure: bool = False) -> str:
     return "; ".join(parts)
 
 
-def verify_cookie(cookie_header: str | None, user_agent: str | None = None) -> bool:
+def verify_cookie(cookie_header: str | None) -> bool:
     """校验 cookie 是否有效。
 
-    四道检查：
-      1. 格式正确（三个段）
+    三道检查：
+      1. 格式正确（两段：payload.signature）
       2. HMAC 签名匹配（防篡改）
       3. 未过期（防长期重放）
-      4. UA 摘要匹配（纵深防御）
+
+    刻意**不检查 User-Agent** —— 理由见模块 docstring。
     """
     if not cookie_header:
         return False
@@ -171,12 +176,12 @@ def verify_cookie(cookie_header: str | None, user_agent: str | None = None) -> b
         return False
 
     segments = token.split(".")
-    if len(segments) != 3:
+    if len(segments) != 2:
         return False
-    issued_at_s, ua_digest, sig = segments
+    issued_at_s, sig = segments
 
     # 1) 签名（用 compare_digest 防时序攻击）
-    payload = f"{issued_at_s}.{ua_digest}"
+    payload = issued_at_s
     expected = _sign(payload)
     if not hmac.compare_digest(sig, expected):
         return False
@@ -191,10 +196,6 @@ def verify_cookie(cookie_header: str | None, user_agent: str | None = None) -> b
     if age < -300:
         return False
     if age > SESSION_TTL_SECONDS:
-        return False
-
-    # 3) UA 绑定
-    if not hmac.compare_digest(ua_digest, _ua_digest(user_agent)):
         return False
 
     return True

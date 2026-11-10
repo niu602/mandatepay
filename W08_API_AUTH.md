@@ -52,17 +52,20 @@ header 方案一上 → 页面数据区全空白 + "我已付款·捕获"按钮 
 
 ```
 cookie 名 : mandatepay_session（https 下用 __Host-mandatepay_session）
-cookie 值 : <issued_at>.<ua_digest>.<hmac_sha256签名>
+cookie 值 : <issued_at>.<hmac_sha256签名>
 ```
 
 | 防护 | 做法 | 防什么 |
 |---|---|---|
-| **防篡改** | HMAC-SHA256 签名（`hmac.compare_digest` 防时序攻击） | 改签发时间/改 UA/伪造 cookie |
+| **防篡改** | HMAC-SHA256 签名（`hmac.compare_digest` 防时序攻击） | 改签发时间/伪造 cookie |
 | **防重放** | 8 小时有效期（`SESSION_TTL_SECONDS`） | 泄露的 cookie 不会长期可用 |
-| **防跨客户端** | 签名覆盖 User-Agent 摘要 | 复制 cookie 到别的浏览器用不了（纵深防御） |
 | **防 XSS 窃取** | `HttpOnly` | JS 读不到 cookie |
 | **防 CSRF** | `SameSite=Lax` | 跨站请求不带 cookie |
 | **防中间人** | https 下用 `__Host-` 前缀 + `Secure` | 浏览器强制 `Path=/` + 禁止 `Domain` |
+
+> **刻意不做：绑定 User-Agent。** UA 本就可伪造，绑定不构成有效防线；
+> 而浏览器升级、代理改写 UA 会让正常用户的 cookie 突然 401 ——
+> 演示现场"打开就能用"优先。详见 `app/session.py` 模块 docstring。
 
 ### 签名密钥从哪来
 
@@ -102,7 +105,8 @@ cookie 下发后浏览器照常拿得到，**镜头④不受鉴权影响**（Chr
 - `test_webhook_is_exempt_from_session_auth` —— **守 webhook 豁免**
 - `test_api_works_after_page_visit` —— DoD 第 2 条
 - `test_tampered_cookie_is_rejected` / `test_tampered_payload_is_rejected` —— 防篡改
-- `test_cookie_bound_to_user_agent` —— UA 绑定
+- `test_cookie_survives_user_agent_change` / `test_cookie_works_without_user_agent_header`
+  —— **UA 不绑定**：换 UA、甚至不带 UA，cookie 仍然有效
 - `test_expired_cookie_rejected` / `test_future_issued_at_rejected` —— 时效
 - `test_agent_parse_rejected_without_session` —— **证明鉴权在 LLM 调用之前**
   （否则裸脚本能靠打 API 白耗 Z.ai 免费档额度）
@@ -132,7 +136,8 @@ cookie 下发后浏览器照常拿得到，**镜头④不受鉴权影响**（Chr
 1. **不做账号体系** —— 工单明确要求。任何人打开页面就拿到会话，
    所以它挡的是"随手写的脚本批量拉数据"，**挡不住**有心的定向爬取。
 2. **不做速率限制** —— 拿到 cookie 后仍可高频请求。
-3. **UA 绑定可伪造** —— 纵深防御的一层，不是主要防线。
+3. **不绑定 User-Agent** —— UA 可伪造，本来就不构成有效防线；绑定反而会让
+   浏览器升级 / 代理改写 UA 的正常用户突然 401。演示稳定性优先。
 4. **会话不区分用户** —— 所有人共享同一个"已登录"状态。
    本项目是 Demo 且数据是演示数据，可接受。
 5. **8 小时硬过期** —— 超过需刷新页面（页面刷新会自动重新签发）。

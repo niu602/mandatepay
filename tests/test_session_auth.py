@@ -10,7 +10,7 @@
 4. **`/api/webhook` 豁免** —— PayPal 是服务器对服务器调用，带不了 cookie；
    误拦会导致 PayPal 事件永远收不到、mandate 状态不更新
 5. 签名防篡改：改一个字节即失效
-6. UA 绑定：换 User-Agent 即失效
+6. UA 不绑定：换 User-Agent 仍然有效（演示稳定性优先）
 7. 过期即失效
 
 运行：python -m pytest tests/ -q
@@ -279,10 +279,10 @@ def test_tampered_payload_is_rejected():
     page = c.get("/", headers={"user-agent": UA})
     cookie = _get_cookie_from(page)
     name, value = cookie.split("=", 1)
-    issued_at, ua_digest, sig = value.split(".")
+    issued_at, sig = value.split(".")
 
     # 把签发时间改成未来（试图延长有效期）
-    forged = f"{int(time.time()) + 99999}.{ua_digest}.{sig}"
+    forged = f"{int(time.time()) + 99999}.{sig}"
     r = c.get("/api/mandates", headers={"user-agent": UA, "cookie": f"{name}={forged}"})
     assert r.status_code == 401, "改签发时间必须被拒（签名覆盖了 payload）"
 
@@ -304,17 +304,32 @@ def test_empty_and_missing_cookie_rejected():
 
 
 # ──────────────────────────────────────────────────────
-# 4. UA 绑定与过期
+# 4. UA 不绑定与过期
 # ──────────────────────────────────────────────────────
 
-def test_cookie_bound_to_user_agent():
-    """cookie 绑定 UA —— 复制到别的客户端用不了（纵深防御）。"""
+def test_cookie_survives_user_agent_change():
+    """**换 User-Agent 后 cookie 仍然有效**。
+
+    曾经把 UA 摘要写进 payload，UA 变了就 401。但 UA 可伪造，本来就不是
+    有效防线；而且浏览器升级、代理改写 UA 会让正常用户突然掉登录。
+    现在刻意不绑定 UA —— 演示现场"打开就能用"优先。
+    """
     c = TestClient(app)
     page = c.get("/", headers={"user-agent": UA})
     cookie = _get_cookie_from(page)
 
     r = c.get("/api/mandates", headers={"user-agent": OTHER_UA, "cookie": cookie})
-    assert r.status_code == 401, "换 User-Agent 后 cookie 应失效"
+    assert r.status_code == 200, "换 User-Agent 后 cookie 应仍然有效"
+
+
+def test_cookie_works_without_user_agent_header():
+    """完全不带 User-Agent 头 → 依然有效（cookie 与 UA 彻底解耦）。"""
+    c = TestClient(app)
+    page = c.get("/", headers={"user-agent": UA})
+    cookie = _get_cookie_from(page)
+
+    r = c.get("/api/mandates", headers={"cookie": cookie})
+    assert r.status_code == 200, "不带 UA 头也应通过"
 
 
 def test_expired_cookie_rejected():
@@ -322,8 +337,7 @@ def test_expired_cookie_rejected():
     # 直接构造一个"很久以前签发"的 cookie：签名覆盖签发时间，
     # 所以必须用真实密钥重签 —— 用 session 模块的内部函数做。
     issued_at = int(time.time()) - (session.SESSION_TTL_SECONDS + 3600)
-    ua_digest = session._ua_digest(UA)
-    payload = f"{issued_at}.{ua_digest}"
+    payload = f"{issued_at}"
     forged = f"{payload}.{session._sign(payload)}"
 
     c = _fresh_client()
@@ -335,8 +349,7 @@ def test_expired_cookie_rejected():
 def test_future_issued_at_rejected():
     """签发时间在未来（时钟偏移容忍 5 分钟，超出即拒）→ 401。"""
     issued_at = int(time.time()) + 3600
-    ua_digest = session._ua_digest(UA)
-    payload = f"{issued_at}.{ua_digest}"
+    payload = f"{issued_at}"
     forged = f"{payload}.{session._sign(payload)}"
 
     c = _fresh_client()
@@ -351,20 +364,20 @@ def test_future_issued_at_rejected():
 
 def test_verify_cookie_roundtrip():
     """签发 → 校验 → 通过。"""
-    name, value = session.issue_cookie_parts(user_agent=UA)
+    name, value = session.issue_cookie_parts()
     header = f"{name}={value}"
-    assert session.verify_cookie(header, user_agent=UA) is True
+    assert session.verify_cookie(header) is True
 
 
 def test_verify_cookie_rejects_none():
     """None / 空 → False。"""
-    assert session.verify_cookie(None, user_agent=UA) is False
-    assert session.verify_cookie("", user_agent=UA) is False
+    assert session.verify_cookie(None) is False
+    assert session.verify_cookie("") is False
 
 
 def test_issue_cookie_headers():
     """Set-Cookie 字符串含必要属性。"""
-    raw = session.issue_cookie(user_agent=UA)
+    raw = session.issue_cookie()
     assert "HttpOnly" in raw
     assert "SameSite=Lax" in raw
     assert "Path=/" in raw
@@ -374,7 +387,7 @@ def test_issue_cookie_headers():
 
 def test_issue_cookie_secure_flag():
     """https 环境 → 带 Secure 且用 __Host- 前缀。"""
-    raw = session.issue_cookie(user_agent=UA, secure=True)
+    raw = session.issue_cookie(secure=True)
     assert "Secure" in raw
     assert raw.startswith("__Host-mandatepay_session="), \
         "https 下应使用 __Host- 前缀（浏览器强制 Path=/ + 无 Domain）"
@@ -382,8 +395,8 @@ def test_issue_cookie_secure_flag():
 
 def test_secure_cookie_verifies():
     """__Host- 前缀的 cookie 也能正常校验。"""
-    name, value = session.issue_cookie_parts(user_agent=UA, secure=True)
-    assert session.verify_cookie(f"{name}={value}", user_agent=UA) is True
+    name, value = session.issue_cookie_parts(secure=True)
+    assert session.verify_cookie(f"{name}={value}") is True
 
 
 def test_secret_is_not_empty():
