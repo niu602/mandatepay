@@ -1,0 +1,173 @@
+1
+00:00:00,000 --> 00:00:03,175
+You ask an AI to subscribe you to
+software.
+
+2
+00:00:03,175 --> 00:00:05,291
+It gets “under 200 a month.”
+
+3
+00:00:05,291 --> 00:00:08,465
+But will it hit pay when you’re not
+watching?
+
+4
+00:00:08,465 --> 00:00:11,993
+Most agents never spend — or spend with no
+explanation.
+
+5
+00:00:11,993 --> 00:00:15,167
+MandatePay: the AI can judge on its own —
+
+6
+00:00:15,167 --> 00:00:19,400
+but every judgment is explainable, and
+every payment gets a human nod.
+
+7
+00:00:20,000 --> 00:00:23,047
+First, authorize it. One sentence:
+
+8
+00:00:31,247 --> 00:00:36,121
+And this isn’t keyword matching. It’s
+function calling
+
+9
+00:00:36,121 --> 00:00:40,995
+The model picks the tool and the
+arguments.
+
+10
+00:00:40,995 --> 00:00:44,651
+It pulled out a monthly budget
+
+11
+00:00:44,651 --> 00:00:50,744
+A per-transaction limit, a vendor list,
+and a category list.
+
+12
+00:00:50,744 --> 00:00:53,791
+That’s an executable Intent Mandate.
+
+13
+00:00:55,000 --> 00:00:59,384
+Now give it something a human would
+actually say:
+
+14
+00:01:04,684 --> 00:01:10,043
+A rule parser dies here. It can pull out
+the numbers
+
+15
+00:01:10,043 --> 00:01:13,940
+But “the cheaper one” needs both prices
+first.
+
+16
+00:01:13,940 --> 00:01:16,376
+Look at the tool trace
+
+17
+00:01:16,376 --> 00:01:22,221
+It queried Notion, then Figma, and only
+then created the purchase request.
+
+18
+00:01:22,221 --> 00:01:28,554
+It found Notion at ten a month, Figma at
+fifteen — and decided.
+
+19
+00:01:28,554 --> 00:01:33,913
+That’s reasoning, not classification.
+Query, compare, decide — on its own.
+
+20
+00:01:35,000 --> 00:01:40,083
+Now it hits the allowlist. The verdict is
+REJECT. And notice
+
+21
+00:01:40,083 --> 00:01:42,394
+It doesn’t just say “denied”.
+
+22
+00:01:46,294 --> 00:01:50,915
+First, the insight: here’s where your
+wallet stands this month.
+
+23
+00:01:50,915 --> 00:01:58,771
+Second, the explanation: not a cold no —
+which rule blocked it, and how to fix it.
+
+24
+00:01:58,771 --> 00:02:03,392
+That fix isn’t a template — the model
+generated it
+
+25
+00:02:03,392 --> 00:02:08,938
+Add Slack to the allowlist and it can
+charge the company card.
+
+26
+00:02:10,000 --> 00:02:16,420
+But if it decides this is worth buying, it
+still can’t charge you.
+
+27
+00:02:16,420 --> 00:02:21,853
+Over the threshold, so it stops — the
+status is PAYER_ACTION_REQUIRED.
+
+28
+00:02:21,853 --> 00:02:24,816
+Every request carries a
+three-layer Mandate
+
+29
+00:02:24,816 --> 00:02:26,298
+Intent, Cart, Payment.
+
+30
+00:02:31,498 --> 00:02:33,473
+Human authorizes, machine executes.
+
+31
+00:02:33,473 --> 00:02:38,906
+And here it is in PayPal — order
+<ORDER_ID>, status COMPLETED.
+
+32
+00:02:40,000 --> 00:02:44,048
+Everything is auditable — used, remaining,
+and month-end projection, all computed.
+
+33
+00:02:44,048 --> 00:02:47,360
+Every trace_id shows the
+Intent, Cart and Payment layers
+
+34
+00:02:47,360 --> 00:02:48,464
+AUTO_APPROVE, REQUIRE_HUMAN, REJECT.
+
+35
+00:02:48,464 --> 00:02:50,304
+Six hundred and fifty decisions
+
+36
+00:02:50,304 --> 00:02:53,616
+Three independent implementations. Four
+wrong-verdict classes — all fixed.
+
+37
+00:02:53,616 --> 00:02:58,032
+MandatePay — let AI spend, but every cent
+earns your authorization. Thanks.

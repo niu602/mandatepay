@@ -87,17 +87,49 @@ Notion 和 Figma 挑便宜的买
 
 ## 2:10–2:40 · 场景四：人点头才扣款（安全设计的闭环）
 
+> 本段 30 秒，含 ⭐ 镜头①（PayPal 后台对账画面）。子时间码已标出，照着卡点。
+
+### 2:10 · 它依然不能自己扣款
+
 🎙 **「但如果它判断这笔该花呢？——它依然不能自己扣款。」**
+
+### 2:16 · 三层 Mandate 弹窗
 
 ⏸ 切到 `/approvals` 审批台，点开一条 PENDING_HUMAN 的请求（弹窗展示三层 Mandate）
 
 🎙 **「金额超过阈值，它就停下来等人。每笔请求都有三层授权记录：Intent 你允许买什么，Cart 这次买什么，Payment 钱怎么扣。」**
+
+### 2:23 · 走完付款闭环（无旁白，纯画面）
 
 ⏸ 点击「① 去 PayPal 付款」→ 沙箱页面点「完成购买」→ 切回 → 点击「② 我已付款·捕获」
 
 📌 画面：`✅ 闭环完成 —— capture xxxxx`
 
 🎙 **「人授权，机器执行。这不是 demo 妥协，这是 AI 花钱的安全底线。」**
+
+### ⭐ 2:31 · 镜头① —— PayPal 后台对账（约 15 秒）
+
+> **这一镜是工单明确要求的**：镜头①要「当场在 PayPal Developer Dashboard
+> 刷出该交易 + 订单号打在画面上 + 当场打开」。没有它，闭环只在自己系统里自证。
+
+⏸ **切到新标签页**（提前开好并停在 Sandbox 的 Activity 页，录制时不要现场等加载）
+
+📌 **画面操作（照着点）**：
+1. 左侧导航点 **Sandbox**（不是 Production —— 演示全程是沙箱）
+2. 顶部切到 **Activity** 或 **Transactions** 标签页
+3. 在列表里找到**刚才那一笔** —— 用 **order id** 定位
+   （就是 `capture xxxxx` 那笔对应的 order id，**不是 capture id**）
+4. 点开那一行 → 进入详情页
+5. 画面**停在 status = COMPLETED 那一行**，不要再点任何东西
+
+🎙 **「And here is the same payment inside PayPal itself — order `<order id>`, status COMPLETED.」**
+
+📌 **画面标注（后期加，稿子上写明位置与内容）**：
+**左上角**贴 order id 大字，内容形如 `ORDER 6S3278047H2709334`
+—— 白字 + 深色半透明底条，字号要大到评委在笔记本屏幕上也读得清。
+（不要放在正中，会挡住 COMPLETED 那行；也不要放右下角，PayPal 侧栏会压住。）
+
+⏸ **停顿 2 秒**（工单要求镜头①与镜头③各停 2 秒 —— 镜头③已有，这里补上）
 
 ---
 
@@ -117,17 +149,49 @@ Notion 和 Figma 挑便宜的买
 
 ## 附：录制前检查清单
 
-- [ ] **清演示数据**（必须最先做，预算口径是"已承诺支出"，测试期订单会占满预算）：
-      `python scripts/reset_demo_data.py --confirm`（保留约束；想连约束一起清加 `--reset-constraints`）
+### 先定：录线上还是录本地？（这一步决定后面怎么做）
+
+**两条路都可行，但先选一条走到底** —— 中途切换会让口径不一致（预算数字、trace id、
+页面上显示的订单都对不上）。
+
+#### 🅰️ 录线上 Azure 实例（**推荐**）
+
+线上 URL：`https://mandatepay-zisen-dph6eucmf4gjckct.eastasia-01.azurewebsites.net`
+
+- [ ] **不要跑 `reset_demo_data.py --confirm`** —— 线上已有三笔演示数据
+      （Notion \$10 / Figma \$80 / Slack \$15），正好覆盖 AUTO_APPROVE /
+      REQUIRE_HUMAN / REJECT 三种判定，是镜头④（审计链）的**现成素材**
+- [ ] 跳过下面所有本地步骤（起服务 / 开隧道 / 建目录 / 设约束）——
+      线上约束已设好：预算 \$200 / 单笔阈值 \$50 / 白名单 [Notion, Figma]，
+      演示数据也齐
+- [ ] 场景一仍**照常演示**「输入自然语言设约束」—— 线上也能设，
+      设完约束不会动那三笔已有交易（约束只影响新判定）
+- [ ] 提前开好 PayPal Developer Dashboard 的 Sandbox → Activity 标签页（镜头①要用，
+      别现场等加载）
+- [ ] 理由：评委看到的就是**线上真实环境**，省掉 ngrok 隧道与本地依赖，
+      且线上的 capture 能在 PayPal 后台查到（镜头①成立）
+
+#### 🅱️ 录本地实例（127.0.0.1:8888 + ngrok）
+
+选这条的理由：**场景一的「现场用自然语言设约束」本身就是演示内容**，
+在干净的库上演示更可控。
+
+- [ ] **可以** `python scripts/reset_demo_data.py --confirm` 清场
+      （保留约束；想连约束一起清加 `--reset-constraints`）
+      —— 预算口径是「已承诺支出」，测试期订单会占满预算
 - [ ] 服务已启动：`python -m uvicorn app.main:app --host 127.0.0.1 --port 8888`
 - [ ] 隧道已开（固定域名）：`env -u http_proxy ... ngrok http --domain=dealer-rover-praying.ngrok-free.dev 127.0.0.1:8888`
 - [ ] 目录已建：`python scripts/setup_catalog.py`（否则场景二查不到价格）
 - [ ] 约束已设：预算 \$200 / 单笔阈值 \$50 / 白名单 [Notion, Figma]
       （用 Demo 稿里那句自然语言设即可，LLM 会解析成结构化规则）
+
+### 两条路都要做的
+
 - [ ] `python scripts/stress_constraints.py --seed 42` 跑一遍，截屏留档（收尾口播用）
 - [ ] 三处 LLM 调用（解析 / 洞察 / 解释）每次约 1–2 秒，**录制前先各跑一遍热身**，避免现场超时
 - [ ] 确认 Demo 稿里的约束句**不会**把 category_whitelist 设成非空
       （"SaaS 预算"只是描述预算用途，不是品类硬过滤 —— 已在 prompt 里区分）
+- [ ] 线上实例做一次预热：`python scripts/keep_warm.py --url <线上URL> --warm`
 
 ## 附：三个 AI 点的对应位置（评审对照表）
 
@@ -138,4 +202,8 @@ Notion 和 Figma 挑便宜的买
 | **解释** | 1:35–2:10 | 「…你把 Slack 加入白名单即可放行」 | `agent/ai_insight.py` `generate_explanation` |
 | 约束引擎 | 全程 | 结构化规则卡、判定 badge | `agent/constraints.py`（压测 650 次判定） |
 | 人工确认闭环 | 2:10–2:40 | capture 成功提示 | `app/main.py` `/api/mandates/confirm` + Webhook |
+| **⭐ 镜头① · 外部对账** | **2:31–2:38** | **PayPal 后台 Activity 里同一笔 order id = COMPLETED** | **PayPal 沙箱（外部系统，非自证）** |
 | 三层审计 | 2:40–3:00 | 三层 Mandate 卡片 | `agent/store.py`（按 trace_id 聚合） |
+
+> **镜头①为什么重要**：前五个证据点都是"在自己系统里看到自己"，
+> 只有镜头①是**在 PayPal 后台看到同一笔交易** —— 它证明闭环不是自说自话。

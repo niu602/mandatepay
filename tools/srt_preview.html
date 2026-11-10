@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DEMO_SCRIPT_EN.srt — 字幕预览</title>
+<style>
+  body { font-family: "Microsoft YaHei", system-ui, sans-serif; background:#0f1218; color:#e8ecf3;
+         margin:0; padding:24px; }
+  h1 { font-size:18px; margin:0 0 4px; color:#7fb3ff; }
+  p.sub { font-size:12px; color:#8b98ad; margin:0 0 20px; }
+  .stage { position:relative; width:960px; height:540px; background:#000; border-radius:8px;
+           overflow:hidden; box-shadow:0 8px 32px rgba(0,0,0,.6); }
+  .fake-video { position:absolute; inset:0;
+    background:linear-gradient(135deg,#12233b 0%,#1d3557 50%,#0d1b2a 100%); }
+  .fake-video::after { content:"MandatePay demo · video placeholder"; position:absolute;
+    left:50%; top:46%; transform:translate(-50%,-50%); font-size:20px; color:#5d7597; }
+  .cc { position:absolute; left:50%; bottom:44px; transform:translateX(-50%);
+        max-width:88%; text-align:center; }
+  .cc span { display:inline-block; background:rgba(0,0,0,.78); color:#fff; font-size:22px;
+             line-height:1.32; padding:3px 7px; border-radius:3px; }
+  .cc span + span { margin-top:2px; }
+  .meta { position:absolute; left:16px; top:12px; font-size:12px; color:#9fb2cc;
+          background:rgba(0,0,0,.5); padding:4px 9px; border-radius:4px; }
+  .bar { margin-top:18px; width:960px; }
+  .bar input { width:100%; }
+  .t { font-family:Consolas,monospace; font-size:13px; color:#9fb2cc; margin-top:6px; }
+  #raw .row { margin-bottom:3px; padding-bottom:3px; border-bottom:1px solid #1e242e; }
+  #raw { margin-top:22px; width:960px; max-height:230px; overflow:auto;
+         background:#161b24; border:1px solid #2a3240; border-radius:6px; padding:12px;
+         font-family:Consolas,monospace; font-size:12px; line-height:1.55; color:#c8d3e2; }
+  .row { display:grid; grid-template-columns:34px 1fr 1fr; gap:6px 10px; }
+  .row > span:last-child { white-space: pre-wrap; }
+  .row .n { color:#5d7597; } .row .t { margin:0; color:#7fb3ff; }
+  .bad { color:#ff7b7b; }
+</style>
+</head>
+<body>
+<h1>DEMO_SCRIPT_EN.srt · 字幕预览（浏览器加载验证）</h1>
+<p class="sub">拖动进度条或点「▶ 播放」——字幕按 SRT 时间码同步显示，模拟播放器行为。</p>
+
+<div class="stage">
+  <div class="fake-video"></div>
+  <div class="meta" id="meta">00:00:00</div>
+  <div class="cc" id="cc"></div>
+</div>
+
+<div class="bar">
+  <input type="range" id="seek" min="0" max="1000" value="0">
+  <div class="t" id="clock">00:00:00,000 / 00:02:58,000</div>
+</div>
+
+<div id="raw"></div>
+
+<script src="srt_data.js"></script>
+<script>
+// SRT 原文（由 Python 生成时注入到 window.SRT_RAW）
+const RAW = (window.SRT_RAW || "");
+document.getElementById('raw').innerHTML =
+  RAW.split(/\n\n+/).map(b => {
+    const l = b.split('\n');
+    return `<div class="row"><span class="n">${l[0]}</span><span class="t">${l[1]||''}</span><span>${(l.slice(2).join(' ')||'').replace(/</g,'&lt;')}</span></div>`;
+  }).join('');
+
+// 解析 SRT
+function parseSRT(text) {
+  const out = [];
+  for (const block of text.trim().split(/\n\n+/)) {
+    const lines = block.split('\n');
+    if (lines.length < 3) continue;
+    const m = lines[1].match(/(\d+):(\d+):(\d+),(\d+)\s*-->\s*(\d+):(\d+):(\d+),(\d+)/);
+    if (!m) continue;
+    const s = +m[1]*3600 + +m[2]*60 + +m[3] + +m[4]/1000;
+    const e = +m[5]*3600 + +m[6]*60 + +m[7] + +m[8]/1000;
+    out.push({ s, e, lines: lines.slice(2).filter(x => x.trim()) });
+  }
+  return out;
+}
+const cues = parseSRT(RAW);
+const DURATION = cues.length ? cues[cues.length-1].e : 0;
+
+const seek = document.getElementById('seek');
+const cc = document.getElementById('cc');
+const clock = document.getElementById('clock');
+const meta = document.getElementById('meta');
+
+function fmt(t) {
+  const h = Math.floor(t/3600), m = Math.floor(t%3600/60), s = Math.floor(t%60);
+  const ms = Math.round((t - Math.floor(t))*1000);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},${String(ms).padStart(3,'0')}`;
+}
+function render(t) {
+  const c = cues.find(x => t >= x.s && t < x.e);
+  // 多行必须放进**同一个** span 并用 <br> 分隔 ——
+  // 否则 HTML 会把 span 之间的换行渲染成空格，截图就失真了
+  cc.innerHTML = c ? `<span>${c.lines.map(l => l.replace(/</g,'&lt;')).join('<br>')}</span>` : '';
+  clock.textContent = `${fmt(t)} / ${fmt(DURATION)}`;
+  meta.textContent = fmt(t).slice(0,8);
+  // 越界的字幕标红（验证没有超出 2 行 42 字符）
+  if (c && c.lines.length > 2) cc.classList.add('bad');
+}
+let cur = 0;
+function tick() {
+  cur += 0.05;
+  if (cur > DURATION) cur = 0;
+  seek.value = Math.round(cur / DURATION * 1000);
+  render(cur);
+}
+seek.addEventListener('input', () => { cur = seek.value / 1000 * DURATION; render(cur); });
+document.addEventListener('keydown', e => {
+  if (e.key === ' ') { e.preventDefault(); setInterval(tick, 50); }
+});
+// 支持 URL 参数 ?t=<秒> 直接跳到某个时间点（用于自动化截图验证）
+const q = new URLSearchParams(location.search);
+if (q.has('t')) {
+  cur = parseFloat(q.get('t'));
+  render(cur);
+} else {
+  render(0);
+}
+</script>
+</body>
+</html>
