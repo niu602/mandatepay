@@ -1,0 +1,481 @@
+{
+  "meta": {
+    "version": 1,
+    "title": "W-12 人工枚举攻击用例（expected decision 人工写死）",
+    "title_en": "W-12 hand-enumerated attack fixtures",
+    "method": "先读 agent/constraints.py 的规格，人工写出每条用例的 expected decision 与 expected reason，再跑引擎对账。期望值不是引擎跑完回填的。",
+    "method_en": "Expected decisions were hand-written from the engine spec before running anything; the engine is then checked against them. No back-filling.",
+    "scope": "5 类攻击 × 4 例 = 20 条。全部离线、纯函数、无网络无 LLM。",
+    "why": "随机压测给的是覆盖率；这组 fixture 给的是**可复现、可评审、可回归**的攻击面清单：每一条都写死了「攻击者想干什么」和「引擎必须给出什么结论」。",
+    "known_exposure": "SPLIT-04 记录了一个**已知敞口**：用户没有设置日累计阈值时，拆单可以绕过单笔软上限。fixture 如实记它，不粉饰。",
+    "refund_policy": "退款类用例（REF-*）针对的是**调用方的聚合口径**：引擎是纯函数，只看传入的 SpendContext。「退款是否回滚额度」由聚合层决定，因此两种口径各写一条，期望判定随口径不同。",
+    "authored": "2026-11-10"
+  },
+  "cases": [
+    {
+      "id": "SPLIT-01",
+      "attack_class": "拆单绕过单笔上限",
+      "attack_class_en": "split payment to evade the per-transaction cap",
+      "title": "单笔恰好等于阈值 → 不算超限",
+      "title_en": "amount exactly at the single-transaction threshold",
+      "why": "攻击者把金额卡在 $50.00 上试探边界。单笔阈值是软上限，判定用严格大于（>），等于即放行。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Plus (monthly)",
+        "amount_usd": 50.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "AUTO_APPROVE", "reason_contains": "符合全部约束"}
+    },
+    {
+      "id": "SPLIT-02",
+      "attack_class": "拆单绕过单笔上限",
+      "attack_class_en": "split payment to evade the per-transaction cap",
+      "title": "单笔超阈值 1 分 → 需人工确认",
+      "title_en": "one cent over the threshold escalates to a human",
+      "why": "$50.01 越过单笔软上限。引擎不能自己放行，必须升级给人确认。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Plus (annual)",
+        "amount_usd": 50.01,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "REQUIRE_HUMAN", "reason_contains": "超过单笔阈值"}
+    },
+    {
+      "id": "SPLIT-03",
+      "attack_class": "拆单绕过单笔上限",
+      "attack_class_en": "split payment to evade the per-transaction cap",
+      "title": "拆成两笔各 $40 → 第二笔被日累计阈值接住",
+      "title_en": "two $40 slices: the second one is caught by the daily cap",
+      "why": "两笔 $40 各自都在单笔阈值之下 —— 单笔上限被绕过。但用户设了 $60 日累计，第二笔（今日已花 $40）合计 $80 > $60，引擎把它升级给人确认。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 60.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Team seat (slice 2/2)",
+        "amount_usd": 40.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 40.0},
+      "expected": {"decision": "REQUIRE_HUMAN", "reason_contains": "超过日累计阈值"}
+    },
+    {
+      "id": "SPLIT-04",
+      "attack_class": "拆单绕过单笔上限",
+      "attack_class_en": "split payment to evade the per-transaction cap",
+      "title": "已知敞口：未设日累计阈值时，拆单能绕过单笔上限",
+      "title_en": "known exposure: without a daily cap, slicing beats the per-transaction cap",
+      "why": "如实记录当前设计的边界：单笔阈值是**软上限**，只有用户再设日累计阈值，拆单才接得住。没有日累计阈值时 $40 + $40 会被放行 —— 这是产品取舍，不是 bug，但必须写进文档。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Team seat (slice 2/2, no daily cap)",
+        "amount_usd": 40.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 40.0},
+      "expected": {"decision": "AUTO_APPROVE", "reason_contains": "符合全部约束"},
+      "exposure": true
+    },
+    {
+      "id": "BUD-01",
+      "attack_class": "多笔累加绕过月预算",
+      "attack_class_en": "many small payments to overrun the monthly budget",
+      "title": "本月已花 $180，再花 $25 → 超月预算，直接拒",
+      "title_en": "$180 already spent, $25 more exceeds the monthly budget",
+      "why": "月度滚动预算是硬上限。累计口径由调用方聚合传入，引擎按「已花 + 本次」判定，超了直接 REJECT，不给人工确认的余地。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Figma",
+        "item": "Figma Professional (monthly)",
+        "amount_usd": 25.0,
+        "category": "Design"
+      },
+      "spend": {"monthly_usd": 180.0, "daily_usd": 0.0},
+      "expected": {"decision": "REJECT", "reason_contains": "超出月度预算"}
+    },
+    {
+      "id": "BUD-02",
+      "attack_class": "多笔累加绕过月预算",
+      "attack_class_en": "many small payments to overrun the monthly budget",
+      "title": "恰好用满预算（$175 + $25 = $200）→ 放行",
+      "title_en": "exactly at the budget line is still allowed",
+      "why": "预算判定同样是严格大于：等于预算不算超。这条锁住边界，防止有人把判断改成 >= 而误拒合法的最后一笔。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Figma",
+        "item": "Figma Professional (monthly)",
+        "amount_usd": 25.0,
+        "category": "Design"
+      },
+      "spend": {"monthly_usd": 175.0, "daily_usd": 0.0},
+      "expected": {"decision": "AUTO_APPROVE", "reason_contains": "符合全部约束"}
+    },
+    {
+      "id": "BUD-03",
+      "attack_class": "多笔累加绕过月预算",
+      "attack_class_en": "many small payments to overrun the monthly budget",
+      "title": "单笔就顶穿月预算（$200.01）→ 直接拒",
+      "title_en": "a single payment that already exceeds the whole budget",
+      "why": "无论怎么拆，第一笔就超月预算时引擎直接拒，不做人工确认。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Enterprise (annual, 200 seats)",
+        "amount_usd": 200.01,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "REJECT", "reason_contains": "超出月度预算"}
+    },
+    {
+      "id": "BUD-04",
+      "attack_class": "多笔累加绕过月预算",
+      "attack_class_en": "many small payments to overrun the monthly budget",
+      "title": "浮点尾数 0.1+0.2 → 按分取整后不误判超限",
+      "title_en": "float tail 0.1+0.2 must not be read as over the cap",
+      "why": "金额一律按「分」取整后再比较，否则 0.30000000000000004 会把恰好等于 $0.30 的合法请求误判成超限 —— 这正是压测里的类 H。",
+      "constraint": {
+        "monthly_budget_usd": 1.0,
+        "single_tx_threshold_usd": 0.3,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion add-on (taxed fraction)",
+        "amount_usd": 0.30000000000000004,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "AUTO_APPROVE", "reason_contains": "符合全部约束"}
+    },
+    {
+      "id": "CAT-01",
+      "attack_class": "未知品类绕过白名单",
+      "attack_class_en": "missing category used to slip past the category whitelist",
+      "title": "请求不带品类 → 不静默放行，升级人工确认",
+      "title_en": "a request with no category is escalated, never silently approved",
+      "why": "用户限定了品类白名单，请求却没带品类 —— 无法校验。既不能静默放行（等于没约束），也不宜硬拒（品类字段常常天然缺失），折中是 REQUIRE_HUMAN。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion AI add-on",
+        "amount_usd": 10.0,
+        "category": ""
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "REQUIRE_HUMAN", "reason_contains": "无法校验品类白名单"}
+    },
+    {
+      "id": "CAT-02",
+      "attack_class": "未知品类绕过白名单",
+      "attack_class_en": "missing category used to slip past the category whitelist",
+      "title": "品类不在白名单（Gaming）→ 直接拒",
+      "title_en": "a category outside the whitelist is rejected outright",
+      "why": "白名单是硬上限。品类明确写了但不在名单里 —— 这是明确违规，不需要人确认。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Figma",
+        "item": "Game asset pack",
+        "amount_usd": 12.0,
+        "category": "Gaming"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "REJECT", "reason_contains": "品类「Gaming」不在白名单"}
+    },
+    {
+      "id": "CAT-03",
+      "attack_class": "未知品类绕过白名单",
+      "attack_class_en": "missing category used to slip past the category whitelist",
+      "title": "品类大小写不同（saas）→ 归一化后命中，放行",
+      "title_en": "category case differences must not cause a false rejection",
+      "why": "这是**误拒**方向的攻击：用户写「saas」，白名单写「SaaS」。归一化后命中白名单，否则用户会看到莫名其妙的拒单。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Plus (monthly)",
+        "amount_usd": 10.0,
+        "category": "saas"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "AUTO_APPROVE", "reason_contains": "符合全部约束"}
+    },
+    {
+      "id": "CAT-04",
+      "attack_class": "未知品类绕过白名单",
+      "attack_class_en": "missing category used to slip past the category whitelist",
+      "title": "用户本来就没限定品类 → 不拦",
+      "title_en": "no category constraint means no category check",
+      "why": "白名单为空 = 用户没设品类约束，此时「请求没有品类」是正常的，不能当成攻击。否则会给完全没设限的用户平白增加确认摩擦。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": []
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Plus (monthly)",
+        "amount_usd": 10.0,
+        "category": ""
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "AUTO_APPROVE", "reason_contains": "符合全部约束"}
+    },
+    {
+      "id": "VEN-01",
+      "attack_class": "别名大小写绕过 vendor",
+      "attack_class_en": "vendor alias / case tricks to slip past the vendor whitelist",
+      "title": "供应商小写（notion）→ 归一化后命中，放行",
+      "title_en": "lower-cased vendor name is normalized and allowed",
+      "why": "Agent 从各处抓来的供应商名大小写不一。不归一化就是误拒，用户会觉得「明明在白名单里却被拒」。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "notion",
+        "item": "Notion Plus (monthly)",
+        "amount_usd": 10.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "AUTO_APPROVE", "reason_contains": "符合全部约束"}
+    },
+    {
+      "id": "VEN-02",
+      "attack_class": "别名大小写绕过 vendor",
+      "attack_class_en": "vendor alias / case tricks to slip past the vendor whitelist",
+      "title": "供应商带空格与混合大小写（  NoTiOn  ）→ 放行",
+      "title_en": "padded mixed-case vendor name is trimmed and allowed",
+      "why": "从别处粘贴来的名字常常两端带空格。归一化 = 去首尾空格 + 转小写。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "  NoTiOn  ",
+        "item": "Notion Plus (monthly)",
+        "amount_usd": 10.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "AUTO_APPROVE", "reason_contains": "符合全部约束"}
+    },
+    {
+      "id": "VEN-03",
+      "attack_class": "别名大小写绕过 vendor",
+      "attack_class_en": "vendor alias / case tricks to slip past the vendor whitelist",
+      "title": "供应商别名（Notion Enterprise）→ 直接拒",
+      "title_en": "a different vendor product name is rejected",
+      "why": "白名单是**精确匹配**（忽略大小写/空格），不是模糊匹配。「Notion Enterprise」是另一个商品/供应商，不应借「Notion」的名号放行。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion Enterprise",
+        "item": "Notion Enterprise (annual)",
+        "amount_usd": 60.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "REJECT", "reason_contains": "供应商「Notion Enterprise」不在白名单"}
+    },
+    {
+      "id": "VEN-04",
+      "attack_class": "别名大小写绕过 vendor",
+      "attack_class_en": "vendor alias / case tricks to slip past the vendor whitelist",
+      "title": "子域别名（notion.so）→ 直接拒",
+      "title_en": "a look-alike domain alias is rejected",
+      "why": "「notion.so」看起来像「Notion」，但归一化后并不相等。这条锁住「不做模糊匹配」的边界 —— 模糊匹配会让白名单形同虚设。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "notion.so",
+        "item": "Gift card",
+        "amount_usd": 50.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "REJECT", "reason_contains": "供应商「notion.so」不在白名单"}
+    },
+    {
+      "id": "REF-01",
+      "attack_class": "退款后额度回滚",
+      "attack_class_en": "refund rolls the quota back",
+      "title": "退款已从月度已花中扣除 → 额度回滚后可正常采购",
+      "title_en": "with the refund netted out, the freed quota buys again",
+      "why": "退款口径 A（净扣）：原付 $100 已退 $20，月度已花按 $80 计，本次 $40 后共 $120 ≤ $200，放行。这是退款后额度的正常语义。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Plus (monthly), after refund",
+        "amount_usd": 40.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 80.0, "daily_usd": 0.0},
+      "expected": {"decision": "AUTO_APPROVE", "reason_contains": "符合全部约束"},
+      "policy": "refund_netted_out"
+    },
+    {
+      "id": "REF-02",
+      "attack_class": "退款后额度回滚",
+      "attack_class_en": "refund rolls the quota back",
+      "title": "退款未从月度已花中扣除 → 保守口径下仍拒",
+      "title_en": "with the refund not netted out, the conservative reading rejects",
+      "why": "退款口径 B（不净扣，保守）：月度已花仍按 $180 计，同一笔 $40 采购后共 $220 > $200，直接拒。引擎是纯函数，聚合口径由调用方决定 —— 这条把另一种口径的后果也钉死。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Plus (monthly), after refund",
+        "amount_usd": 40.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 180.0, "daily_usd": 0.0},
+      "expected": {"decision": "REJECT", "reason_contains": "超出月度预算"},
+      "policy": "refund_not_netted_out"
+    },
+    {
+      "id": "REF-03",
+      "attack_class": "退款后额度回滚",
+      "attack_class_en": "refund rolls the quota back",
+      "title": "退款回补后恰好用满预算（$160 + $40 = $200）→ 放行",
+      "title_en": "the refunded quota lands exactly on the budget line",
+      "why": "退款回补的额度用满预算不多不少。锁住「等于预算仍放行」这条边界在退款场景下同样成立。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Plus (monthly), refund boundary",
+        "amount_usd": 40.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 160.0, "daily_usd": 0.0},
+      "expected": {"decision": "AUTO_APPROVE", "reason_contains": "符合全部约束"},
+      "policy": "refund_netted_out"
+    },
+    {
+      "id": "REF-04",
+      "attack_class": "退款后额度回滚",
+      "attack_class_en": "refund rolls the quota back",
+      "title": "额度回滚也不能让单笔软上限失效（$60 > $50）",
+      "title_en": "a refunded quota must not re-open the per-transaction cap",
+      "why": "攻击者想用「先付后退、再买一笔大的」绕过单笔阈值。额度回滚只影响月预算口径，单笔阈值与退款无关 —— $60 依然要人确认。",
+      "constraint": {
+        "monthly_budget_usd": 200.0,
+        "single_tx_threshold_usd": 50.0,
+        "daily_threshold_usd": 0.0,
+        "vendor_whitelist": ["Notion", "Figma"],
+        "category_whitelist": ["SaaS", "Design"]
+      },
+      "request": {
+        "vendor": "Notion",
+        "item": "Notion Enterprise (after refund)",
+        "amount_usd": 60.0,
+        "category": "SaaS"
+      },
+      "spend": {"monthly_usd": 0.0, "daily_usd": 0.0},
+      "expected": {"decision": "REQUIRE_HUMAN", "reason_contains": "超过单笔阈值"},
+      "policy": "refund_netted_out"
+    }
+  ]
+}

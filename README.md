@@ -437,6 +437,39 @@ verdict.
 > engine agree with three independent readings of its own spec?" — so the cases
 > are generated and the expectations are computed.
 
+### Hand-enumerated attack fixtures (W-12)
+
+Random stress testing buys coverage; it does not buy a checklist you can walk a
+reviewer through. So there is a second, smaller suite: **5 attack classes × 4 cases =
+20 cases**, with every expected verdict written by hand in
+[`tests/fixtures/attack_cases.json`](tests/fixtures/attack_cases.json).
+
+| Attack class | What the attacker is trying to do |
+|---|---|
+| **Split payment** | slice one purchase into pieces so each stays under the per-transaction cap |
+| **Budget drip** | many small payments that each look fine but overrun the monthly budget together |
+| **Unknown category** | omit or spoof the category to slip past the category allowlist |
+| **Vendor alias / case** | respell an allowlisted vendor (`notion`, `  NoTiOn  `, `notion.so`) to get through |
+| **Refund rollback** | pay, get refunded, then treat the freed quota as a fresh allowance |
+
+The expected verdicts were written from the constraint specification **before** the
+engine was run against them — no back-filling. Each case pins both the verdict and a
+fragment of the reason string, so a change in the engine's *ordering* (not just its
+outcome) breaks the suite.
+
+It also records what the engine does **not** stop. `SPLIT-04` is a deliberate known
+exposure: with no daily cap configured, two $40 payments each stay under the $50
+per-transaction threshold, so the second one is auto-approved. The per-transaction
+threshold is a **soft** limit; the daily cap is what actually closes the slicing hole.
+Writing that down is the point of the fixture.
+
+```bash
+python scripts/stress_constraints.py --fixture     # hand-written expectations vs engine
+python -m pytest tests/test_attack_fixtures.py -q  # the same fixture, as a CI guard
+```
+
+Both are 100% offline — pure function calls, no network, no LLM.
+
 ---
 
 ## API authentication
@@ -572,7 +605,7 @@ mandatepay/
 │   ├── gen_deploy_env.py         # generate deploy.env (refuses local DATABASE_URL)
 │   ├── demo_mcp.py               # MCP capability demo — read-only works, money tools blocked
 │   ├── keep_warm.py              # pre-warm / cold-start probe / CDN self-check
-│   ├── stress_constraints.py     # 650-judgement stress test, 3 oracles
+│   ├── stress_constraints.py     # 650-judgement stress test, 3 oracles (+ --fixture mode)
 │   ├── verify_llm_zai.py         # 20-sentence intent verification + degradation stats
 │   ├── scan_secrets.py           # wide-criteria key scan (tree + full history + self-check)
 │   └── migrate_sqlite_to_pg.py   # SQLite → PostgreSQL migration
@@ -583,7 +616,8 @@ mandatepay/
 │   ├── audit.html          # three-layer Mandate audit + human confirmation
 │   ├── budget.html         # AG Studio dashboard (with classic fallback inside)
 │   └── budget.orig.html    # ARCHIVED pre-AG-Studio snapshot (no route, not a live page)
-├── tests/                  # 139 tests: constraints + session auth + keep-warm + UI English + MCP
+├── tests/                  # 175 tests: constraints + attack fixtures + session auth + keep-warm + UI English + MCP
+│   └── fixtures/attack_cases.json   # W-12: 20 hand-enumerated attack cases, expected verdicts frozen
 ├── Dockerfile / Procfile / startup.sh / render.yaml   # deployment assets
 ├── LLM_INTENT_VERIFICATION.md   # 20 × 3 intent parsing report
 ├── STRESS_REPORT.md             # 650-judgement constraint stress report

@@ -52,3 +52,7 @@ static/vendor/
 # 由 `python scripts/keep_warm.py --measure` 生成。
 # 真实耗时数据应该贴进 W07_KEEP_WARM.md 的验收表，而不是留在 JSON 里。
 cold_start_measure.json
+
+# ── 自检临时目录（GitHub API 响应、截图、cookie jar）──────
+# 这里可能有会话 cookie / 接口响应，绝不入库。
+.tmp_gh/

@@ -1,29 +1,39 @@
 """D12 约束引擎压测 + 失败 case 分类。
 
-方法论：压测若拿引擎自己当标准答案，等于没测。
-所以这里维护三份**独立参照实现（oracle）**：
-  1. strict  —— 与当前引擎规格逐条对齐 → 检验「代码有没有写错」
-  2. legacy  —— 还原**修复前**的判定口径 → 量化「用户此前实际遭遇什么」
-  3. product —— 按**用户直觉**推导 → 暴露「用户会撞上的误拒/漏放」
+两种模式（**都 100% 离线**：不联网、不调 LLM、不碰 PayPal）
 
-规模：50 条随机约束 × 13 条请求/约束 = 650 次判定，
-其中 550 条为对抗样本（金额恰在阈值/预算、大小写、带空格、缺品类、浮点尾数等），
-这些边界正是真实事故高发区。
+  A) 默认模式 —— 随机压测
+     python scripts/stress_constraints.py [--seed 42]
 
-产出：
-- 终端报告（修复前/后三层口径 + 失败分类）
-- STRESS_REPORT.md（可直接作为 Potential Impact 的数据支撑）
+     方法论：压测若拿引擎自己当标准答案，等于没测。
+     所以这里维护三份**独立参照实现（oracle）**：
+       1. strict  —— 与当前引擎规格逐条对齐 → 检验「代码有没有写错」
+       2. legacy  —— 还原**修复前**的判定口径 → 量化「用户此前实际遭遇什么」
+       3. product —— 按**用户直觉**推导 → 暴露「用户会撞上的误拒/漏放」
 
-运行：python scripts/stress_constraints.py [--seed 42]
+     规模：50 条随机约束 × 13 条请求/约束 = 650 次判定，
+     其中 550 条为对抗样本（金额恰在阈值/预算、大小写、带空格、缺品类、浮点尾数等），
+     这些边界正是真实事故高发区。
+
+  B) fixture 模式（W-12）—— 人工枚举用例对账
+     python scripts/stress_constraints.py --fixture
+     python scripts/stress_constraints.py --fixture tests/fixtures/attack_cases.json
+
+     随机压测给的是**覆盖率**，这组 fixture 给的是**可复现、可评审、可回归**的
+     攻击面清单：5 类攻击 × 4 例，expected decision 全部**人工写死**
+     （先读 agent/constraints.py 的规格写期望，再跑引擎对账，不是跑完回填）。
+     同样离线：纯函数调用，无网络无 LLM。
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import random
 import sys
 from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -34,6 +44,9 @@ except Exception:
 
 from agent.constraints import SpendContext, evaluate  # noqa: E402
 from agent.models import Constraint, Decision, PurchaseRequest  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_FIXTURE = str(ROOT / "tests" / "fixtures" / "attack_cases.json")
 
 VENDORS = ["Notion", "Figma", "Slack", "GitHub", "Zoom", "Linear", "Dropbox"]
 CATEGORIES = ["SaaS", "Design", "Hardware", "Infra", "Productivity"]
@@ -260,12 +273,101 @@ def classify(case: Case, got: Decision, want: Decision) -> str:
     return _SEVERITY
 
 
+# ── W-12 fixture 模式：人工枚举用例 × 引擎真实判定 ─────────────
+def run_fixture(path: str) -> int:
+    """把 fixture 里**手写的期望**与引擎**真实判定**逐条对账。
+
+    这里刻意不做「以引擎为准」的回填：期望值是人工写死的，
+    对不上就是问题（引擎写错 / fixture 写错 / 规格变了没同步）—— 三种都要暴露。
+
+    同样 100% 离线：只调用纯函数 `evaluate()`，不联网、不调 LLM、不碰 PayPal。
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        print(f"❌ 找不到 fixture 文件: {path}")
+        return 2
+    except json.JSONDecodeError as e:
+        print(f"❌ fixture 不是合法 JSON: {e}")
+        return 2
+
+    cases = data.get("cases") or []
+    if not cases:
+        print("❌ fixture 里没有 cases")
+        return 2
+
+    meta = data.get("meta", {})
+    classes = sorted({c.get("attack_class", "?") for c in cases})
+    print("=" * 78)
+    print("W-12 人工枚举 fixture —— 手写期望 vs 引擎真实判定（离线，无网络 / 无 LLM）")
+    print("=" * 78)
+    print(f"fixture  : {path}")
+    print(f"条目数   : {len(cases)}　攻击类别 {len(classes)} 类：{'、'.join(classes)}")
+    if meta.get("method"):
+        print(f"口径     : {meta['method']}")
+    print()
+
+    bad: list[tuple[dict, str, str, str]] = []
+    per_class_ok: Counter[str] = Counter()
+    per_class_all: Counter[str] = Counter()
+
+    for c in cases:
+        cons = Constraint(**c["constraint"])
+        req = PurchaseRequest(**c["request"])
+        spend = SpendContext(**(c.get("spend") or {}))
+        exp = c["expected"]
+        want = Decision(exp["decision"])
+        needle = exp.get("reason_contains", "")
+        res = evaluate(req, cons, spend=spend)
+        got = res.decision
+        reason_ok = (not needle) or (needle in res.reason)
+        per_class_all[c.get("attack_class", "?")] += 1
+        if got == want and reason_ok:
+            per_class_ok[c.get("attack_class", "?")] += 1
+            mark = "✓"
+        else:
+            mark = "✗"
+            bad.append((c, exp["decision"], got.value, res.reason))
+        print(f"  [{mark}] {c['id']:<10} | {c.get('attack_class', ''):<18} | "
+              f"期望 {exp['decision']:<14} | 实际 {got.value:<14} | {res.reason[:34]}")
+        if c.get("exposure"):
+            print(f"        ⚠️  已知敞口：{c.get('why', '')[:70]}")
+
+    print()
+    print("  按攻击类别：")
+    for cls in classes:
+        ok = per_class_ok.get(cls, 0)
+        all_n = per_class_all.get(cls, 0)
+        flag = "✅" if ok == all_n else "❌"
+        print(f"    {flag} {cls:<20} {ok}/{all_n} 一致")
+    print()
+
+    if bad:
+        print(f"❌ {len(bad)}/{len(cases)} 条与手写期望不符：")
+        for c, want, got, reason in bad:
+            print(f"   - {c['id']}：期望 {want}，实际 {got}｜引擎理由: {reason}")
+            print(f"     场景: {c.get('title', '')} —— {c.get('why', '')[:60]}")
+        return 1
+
+    print(f"✅ 全部 {len(cases)} 条手写期望与引擎判定一致"
+          f"（{len(classes)} 类攻击 × {len(cases) // max(len(classes), 1)} 例）")
+    return 0
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="约束引擎压测")
+    ap = argparse.ArgumentParser(description="约束引擎压测 / 人工枚举 fixture 对账")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--constraints", type=int, default=50)
     ap.add_argument("--out", default="STRESS_REPORT.md")
+    ap.add_argument("--fixture", nargs="?", const=DEFAULT_FIXTURE, default=None,
+                    metavar="PATH",
+                    help="W-12 模式：跑人工枚举 fixture 并与手写期望对账"
+                         "（默认 %s）；不给 --seed/--constraints 时不影响随机压测模式" % DEFAULT_FIXTURE)
     args = ap.parse_args()
+
+    if args.fixture:
+        return run_fixture(args.fixture)
 
     rng = random.Random(args.seed)
     constraints = make_constraints(args.constraints, rng)
