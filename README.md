@@ -153,7 +153,7 @@ python scripts/verify_llm_zai.py --repeat 3 --thinking disabled
 |---|---|---|
 | `/` | PayPal sandbox checkout button | Creates a real sandbox order; the buyer approves in the PayPal popup, then the page captures it → order status `COMPLETED` |
 | `/constraints` | One text box + structured rule cards + a live demo panel | Type a sentence like *"SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma"* → it becomes structured rules; the demo panel shows an **insight** (spend context) and an **explanation** (why a decision came out the way it did) |
-| `/budget` | AG Studio dashboard: monthly budget used / remaining / projected month-end / per-supplier breakdown | Renders with real data from `/api/budget/summary`. If the AG Studio runtime can't load, the page **automatically falls back** to a hand-built view — same data, plain HTML |
+| `/budget` | AG Studio dashboard: monthly budget used / remaining / projected month-end / per-supplier breakdown | Renders with real data from `/api/budget/summary`. If the AG Studio runtime can't load, the page **automatically falls back** to a hand-built view — same data, plain HTML. The repo ships no vendored runtime (`static/vendor/` is gitignored), so the runtime comes from a pinned CDN and the fallback covers a CDN outage |
 | `/approvals` | List of purchase requests, each with a decision badge | Shows `AUTO_APPROVE` / `REQUIRE_HUMAN` / `REJECT`. A `PENDING_HUMAN` request has a **"Go to PayPal"** + **"I paid, capture it"** button pair — the human-authorisation half of the loop |
 | `/audit` | Every transaction as three stacked cards | One row per transaction → **Intent** (what was allowed) / **Cart** (what was bought) / **Payment** (how the money moved), tied together by a `trace_id`. Raw JSON is available from `GET /api/mandates` |
 
@@ -167,7 +167,7 @@ All five are captured from the live instance, not from mock-ups.
 | ![Constraint setup page](docs/screenshots/02-constraints.png) | **`/constraints` — one sentence in, structured rules out.** The rule cards show the parsed monthly budget, per-transaction threshold, daily threshold and both allowlists; the demo panel below runs the same sentence through the agent. |
 | ![Approval desk](docs/screenshots/03-approvals.png) | **`/approvals` — the human-authorisation half of the loop.** Each request carries its decision badge; the `PENDING_HUMAN` one offers the "Go to PayPal" + "I paid, capture it" button pair. |
 | ![Three-layer Mandate audit](docs/screenshots/04-audit.png) | **`/audit` — every transaction as three cards.** One row per transaction, showing the Intent / Cart / Payment layers side by side under a shared `trace_id`, with all three verdicts visible. |
-| ![AG Studio budget dashboard](docs/screenshots/05-budget-agstudio.png) | **`/budget` — the AG Studio dashboard.** Monthly budget, committed spend, remaining and projected month-end, all computed from the same records. If the AG Studio runtime cannot load, the page falls back to a hand-built classic view automatically. |
+| ![AG Studio budget dashboard](docs/screenshots/05-budget-agstudio.png) | **`/budget` — the AG Studio dashboard.** Monthly budget, committed spend, remaining and projected month-end, all computed from the same records. If the AG Studio runtime cannot load, the page falls back to a hand-built classic view automatically (runtime resolved from the pinned CDN — `static/vendor/` is gitignored). |
 
 ### The three scenarios (expected decisions)
 
@@ -381,6 +381,9 @@ AG Studio is an npm commercial product with a 45-day free trial (fully functiona
 UI watermark). The page probes for a local runtime and **falls back to jsDelivr CDN**
 if it isn't installed — so a fresh clone works with zero extra setup, and if the
 runtime ever fails to load the page degrades to a hand-built view instead of a blank page.
+The repository deliberately does **not** commit `static/vendor/` (it is gitignored),
+so every deployment resolves the runtime from that pinned CDN — the hand-built
+fallback is what covers a CDN outage.
 
 ---
 
@@ -561,14 +564,24 @@ Stated plainly, because a demo that oversells itself is worse than one that does
    stop casual scripted scraping, **not** to stop a determined attacker. There is no
    rate limiting and sessions aren't per-user. This is a demo, not a payment product.
 2. **The agent cannot complete a payment on its own** — by design (see above).
-3. **AG Studio runs in trial mode** (45 days, fully functional, no UI watermark). The
-   page falls back to a hand-built view if the runtime fails to load.
+3. **AG Studio runs on a 45-day trial** (fully functional, no UI watermark). The key
+   is injected at runtime from `AG_STUDIO_LICENSE` through `/api/ag-license` — never
+   hard-coded in the page or in git. The repo ships no vendored runtime
+   (`static/vendor/` is gitignored), so a deployment loads it from a pinned CDN and
+   the page falls back to a hand-built view if that runtime fails to load.
 4. **Free-tier LLM endpoints are unreliable under load** (measured ~20% success at
    peak). Handled with retries and observable degradation, but it is a real constraint.
 5. **The LLM is a single point of failure for intent parsing** — mitigated by a
    rule-based fallback, which is why the demo never hard-stops.
 6. **The MCP integration is minimal** — one capability, deliberately, to avoid
    disturbing the two verified paths.
+7. **Amounts are floats internally.** Every comparison rounds to cents first
+   (`round(x, 2)`), so `0.1 + 0.2` is never mistaken for being over a threshold. The
+   PayPal order path divides the total by `quantity` and rounds the unit price to
+   cents — exact for `quantity = 1` (every call site in this repo), but with
+   `quantity > 1` the charged total can drift by a cent (e.g. $10 × 3 → $9.99).
+   Supporting multi-item orders would need cent-level remainder distribution,
+   not plain division.
 
 ---
 

@@ -256,7 +256,9 @@ is defined programmatically — `createStudio()` plus `setState()` — so the
 dashboard's shape is reviewable in a diff instead of being reconstructed by hand
 in an editor, and the data decisions stay in the tested engine rather than in
 chart configuration. If the AG Studio runtime fails to load, the page falls back
-automatically to a classic view that still shows the same numbers. A dashboard
+automatically to a classic view that still shows the same numbers. The repository
+ships no vendored runtime — `static/vendor/` is gitignored — so the runtime is
+resolved from a pinned CDN and the fallback covers a CDN outage. A dashboard
 that breaks the demo is worse than no dashboard.
 
 *Source: `README.md` (§"Three ways to reach PayPal", §"AG Studio: dashboards
