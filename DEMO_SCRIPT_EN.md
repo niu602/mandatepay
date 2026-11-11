@@ -170,8 +170,11 @@
 <!-- 中文稿对应：1:59–2:27 · 场景四：人点头才扣款（含镜头①） -->
 
 - Open a PENDING_HUMAN request in /approvals — the popup shows all three layers.
-- Click “① Pay on PayPal” → sandbox “Complete purchase” → back → click “② I’ve paid · capture”.
-- Screen shows: ✅ 闭环完成 —— capture xxxxx
+- Click “① Pay on PayPal” (opens the sandbox in a NEW tab) → click “Complete purchase”
+- → the browser auto-returns to our `/paypal/return` page, which captures the order
+  itself and shows green `Payment COMPLETED` + the real `capture_id`.
+  (Do NOT click “② I've paid · capture” — the order is already captured; a second
+  capture returns HTTP 400.)
 - ★ SHOT ① (PayPal Developer Dashboard — the order id must be on screen):
 -   1. Open a NEW tab on PayPal Developer Dashboard → Sandbox
 -   2. Tab: Activity (or Transactions)
