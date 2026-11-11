@@ -3,15 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PayPal Sandbox Checkout Test · PayPal 沙箱支付测试</title>
+  <title>MandatePay · PayPal Sandbox Checkout</title>
   <style>
     body { font-family: "Microsoft YaHei", system-ui, sans-serif; max-width: 560px; margin: 48px auto; padding: 0 16px; color: #1a2433; }
     h1 { font-size: 22px; color: #003087; }
     #status { margin-top: 16px; padding: 10px 12px; border-radius: 6px; background: #f0f4fa; font-size: 14px; white-space: pre-wrap; }
+    nav.top { margin-bottom:16px; font-size:14px; }
+    nav.top a { color:#0070ba; margin-right:16px; text-decoration:none; }
+    nav.top a:hover { text-decoration:underline; }
+    nav.top a.current { color:#1a2433; font-weight:600; }
   </style>
 </head>
 <body>
-  <h1>PayPal Sandbox Integration Skeleton · 集成骨架</h1>
+  <nav class="top"><a class="current" href="/">· Pay 支付测试</a><a href="/constraints">· Constraints 约束设定</a><a href="/budget">· Budget 预算仪表盘</a><a href="/approvals">· Approvals 审批台</a><a href="/audit">· Audit 审计日志</a><a href="https://github.com/niu602/mandatepay" target="_blank" rel="noopener">· Source 源码</a></nav>
+  <h1>MandatePay · PayPal Sandbox Checkout 沙箱支付测试</h1>
   <p>Amount: $10.00 USD (change it in the /api/create-order request body) · 金额：$10.00 USD（可在 /api/create-order 入参中修改）</p>
   <div id="paypal-button-container"></div>
   <div id="status">Waiting for payment… · 等待支付……</div>

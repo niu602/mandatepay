@@ -175,14 +175,27 @@ def test_nav_is_bilingual_on_every_page():
                 assert LATIN.search(txt), f"{name} 导航项纯中文：{txt!r}"
 
 
-def test_index_page_has_no_nav_intentionally():
-    """`index.html` 故意不加导航 —— 它是最短路径（打开就能付款）。
+def test_index_page_has_nav_with_current_page_highlighted():
+    """`index.html` 现在也有导航了（W-14 · A4）—— 与另外四页同一套结构。
 
-    锁定这个事实：将来有人"顺手补个导航"反而会破坏演示的最短路径设计。
+    之前它故意不加导航（"最短路径"设计），现在改成了统一导航：
+    评审时从任何一页都能跳到别的页，不必回浏览器标签。
+
+    锁定三件事：
+    1. 导航项与另外四页一致（Pay / Constraints / Budget / Approvals / Audit / Source）；
+    2. **当前页（/）高亮** —— 五个页面里只有它带 class="current"；
+    3. 标题改成 "MandatePay · PayPal Sandbox Checkout"，金额说明仍然双语。
     """
     html = _read("index.html")
-    assert "<nav" not in html, "index.html 是最短路径页，不应加导航"
-    # 但标题与金额说明必须双语
+    m = re.search(r'<nav class="top">(.*?)</nav>', html, re.S)
+    assert m, "index.html 应有 <nav class=\"top\">（与另外四页一致）"
+    nav = m.group(1)
+    for href in ('href="/"', 'href="/constraints"', 'href="/budget"',
+                 'href="/approvals"', 'href="/audit"'):
+        assert href in nav, f"首页导航缺少 {href}"
+    assert 'class="current" href="/"' in nav, "当前页（/）应高亮 class=\"current\""
+    # 标题与金额说明
+    assert "<title>MandatePay · PayPal Sandbox Checkout</title>" in html
     assert "PayPal Sandbox" in html
     assert "Amount" in html
 
