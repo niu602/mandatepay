@@ -11,8 +11,12 @@
 """
 from __future__ import annotations
 
+import logging
+
 from .llm_intent import _client, _invoke_with_retry
 from .models import Constraint, PurchaseRequest
+
+logger = logging.getLogger(__name__)
 
 
 def _llm_text(system: str, user: str) -> str | None:
@@ -34,6 +38,53 @@ def _llm_text(system: str, user: str) -> str | None:
         return text or None
     except Exception:
         return None
+
+
+# ── 一致性守卫：洞察不能和判定徽章打架 ───────────────────────────
+# 实测坑：LLM 给一张 REJECT 的单子写洞察时，句子里冒出"会通过"——
+# 而页面上同一行的徽章写着 REJECT。评委一眼就能看出矛盾，整段演示就废了。
+#
+# 所以 LLM 文本回来后做一次**轻量**校验：与判定矛盾 → 丢弃 LLM 文本，
+# 改用下面的模板兜底（模板的 verdict 由判定映射而来，保证与徽章一致）。
+#
+# 只看"结论词"，不看整句语义 —— 这是刻意的：轻量、无 LLM、可测、零延迟。
+_CONTRADICT = {
+    # 判定为拒：文本却说"会通过" → 矛盾
+    "REJECT": ("会通过", "可通过", "approved", "will pass"),
+    # 判定为放行：文本却说"会被拦" → 矛盾
+    "AUTO_APPROVE": ("会被拦截", "会被拒绝", "rejected", "will be blocked"),
+    # 判定为需人工：两种结论词都不该出现
+    "REQUIRE_HUMAN": (
+        "会通过", "可通过", "approved", "will pass",
+        "会被拦截", "会被拒绝", "rejected",
+    ),
+}
+
+# 否定前缀：出现这些说明句子其实在否定（"不会通过" ≠ "会通过"）
+_NEGATIONS = ("不", "非", "未", "没", "not ", "n't", "never ", "cannot ", "can't ")
+
+
+def _contradicts_decision(text: str, decision: str) -> bool:
+    """LLM 洞察文本是否与引擎判定矛盾。
+
+    只在"肯定语气"下判定 —— "这笔不会通过"（REJECT 时是对的）不算矛盾。
+    """
+    needles = _CONTRADICT.get(decision, ())
+    if not needles or not text:
+        return False
+    low = text.lower()
+    for n in needles:
+        nl = n.lower()
+        idx = 0
+        while True:
+            i = low.find(nl, idx)
+            if i < 0:
+                break
+            prefix = low[max(0, i - 4):i]
+            if not any(neg in prefix for neg in _NEGATIONS):
+                return True
+            idx = i + len(nl)
+    return False
 
 
 # ── 消费洞察（D9）─────────────────────────────────────────────
@@ -77,7 +128,13 @@ def generate_insight_with_source(
     )
     text = _llm_text(_INSIGHT_SYSTEM, user)
     if text:
-        return text, True
+        if _contradicts_decision(text, decision):
+            # 文本与判定徽章矛盾 → 丢弃，用模板（verdict 与徽章一致）
+            logger.warning(
+                "[insight] LLM 文本与判定 %s 矛盾，已回退模板：%s", decision, text[:60]
+            )
+        else:
+            return text, True
     return fallback, False
 
 
