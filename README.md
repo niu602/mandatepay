@@ -132,7 +132,7 @@ Open **http://127.0.0.1:8888/** — you should see the PayPal sandbox payment pa
 # Automated sandbox payment loop (create → simulate approve → capture → assert COMPLETED)
 python -m agent.e2e_check --auto --amount 7.5
 
-# Constraint engine test suite (113 tests, ~2s, fully offline)
+# Constraint engine test suite (188 tests, ~4s, fully offline)
 python -m pytest tests/ -q
 
 # LLM intent parsing: 20 sentences × 3 runs, with degradation accounting
@@ -232,7 +232,7 @@ So the front-end ships a **"Go to PayPal"** + **"I paid, capture it"** button pa
 │ Orders v2      │            │  (agent/            │         │  parser         │
 │ (app/          │            │   constraints.py)   │         │ (agent/         │
 │  paypal_client)│            │  pure function      │         │  llm_intent.py) │
-└────────────────┘            │  89 unit tests      │         │ OpenAI protocol │
+└────────────────┘            │  188 unit tests     │         │ OpenAI protocol │
                              └──────────┬──────────┘         └─────────────────┘
                                         │
                          ┌──────────────▼──────────────┐
@@ -621,7 +621,13 @@ mandatepay/
 │   ├── stress_constraints.py     # 650-judgement stress test, 3 oracles (+ --fixture mode)
 │   ├── verify_llm_zai.py         # 20-sentence intent verification + degradation stats
 │   ├── scan_secrets.py           # wide-criteria key scan (tree + full history + self-check)
-│   └── migrate_sqlite_to_pg.py   # SQLite → PostgreSQL migration
+│   ├── migrate_sqlite_to_pg.py   # SQLite → PostgreSQL migration
+│   ├── check_ui_english.py       # front-end English-only acceptance (five pages)
+│   ├── check_ui_rendered.py      # same, but in a real browser after rendering
+│   ├── check_devpost_facts.py    # every claim in DEVPOST_SUBMISSION.md vs the repo
+│   ├── check_llm_health.py       # pre-flight: is the LLM endpoint rate-limited right now?
+│   ├── check_budget_views.py     # /budget dual-view + license-banner check in real Chrome
+│   └── build_demo_script_en.py   # regenerate DEMO_SCRIPT_EN.md / .srt from the Chinese script
 ├── static/
 │   ├── index.html          # PayPal checkout page (web path)
 │   ├── constraints.html    # natural-language constraint setup
@@ -629,7 +635,7 @@ mandatepay/
 │   ├── audit.html          # three-layer Mandate audit + human confirmation
 │   ├── budget.html         # AG Studio dashboard (with classic fallback inside)
 │   └── budget.orig.html    # ARCHIVED pre-AG-Studio snapshot (no route, not a live page)
-├── tests/                  # 175 tests: constraints + attack fixtures + session auth + keep-warm + UI English + MCP
+├── tests/                  # 188 tests: constraints + attack fixtures + session auth + keep-warm + UI English + MCP
 │   └── fixtures/attack_cases.json   # W-12: 20 hand-enumerated attack cases, expected verdicts frozen
 ├── Dockerfile / Procfile / startup.sh / render.yaml   # deployment assets
 ├── LLM_INTENT_VERIFICATION.md   # 20 × 3 intent parsing report
