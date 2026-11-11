@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MandatePay · Approvals 采购审批台</title>
+  <title data-en="MandatePay · Approvals" data-zh="MandatePay · 采购审批台">MandatePay · Approvals 采购审批台</title>
   <style>
     * { box-sizing:border-box; }
     body { font-family:"Microsoft YaHei", system-ui, sans-serif; max-width:1120px; margin:28px auto;
@@ -95,7 +95,7 @@
 <!-- 审批弹窗 -->
 <div class="mask" id="mask">
   <div class="modal">
-    <div class="modal-h"><h3 id="mTitle">Purchase request details 采购请求详情</h3><button class="x" onclick="closeModal()">×</button></div>
+    <div class="modal-h"><h3 id="mTitle" data-en="Purchase request details" data-zh="采购请求详情">Purchase request details 采购请求详情</h3><button class="x" onclick="closeModal()">×</button></div>
     <div class="modal-b" id="mBody"></div>
     <div class="modal-f" id="mFoot"></div>
   </div>
@@ -123,7 +123,7 @@ async function loadList(){
           ${m.decision?`<span class="req-meta">${esc(m.decision)}</span>`:''}
           <span class="spacer"></span>
           <span class="req-meta">${esc((m.created_at||'').slice(0,19).replace('T',' '))}</span>
-          <span class="req-meta">${pending?'Click to handle › 点击处理 ›':'Details › 详情 ›'}</span>
+          <span class="req-meta" data-en="${pending?'Click to handle ›':'Details ›'}" data-zh="${pending?'点击处理 ›':'详情 ›'}">${pending?'Click to handle › 点击处理 ›':'Details › 详情 ›'}</span>
         </div>
         <div class="req-foot">
           <span class="trace">${esc((m.cart||'').slice(0,60))}</span>
@@ -133,18 +133,18 @@ async function loadList(){
       </div>`;
     }).join('');
     window.__ITEMS = items;
-  }catch(e){ el.innerHTML = `<div class="empty" data-en="Load failed" data-zh="加载失败">加载失败: ${esc(e)}</div>`; }
+  }catch(e){ el.innerHTML = `<div class="empty">${MPLang.T("Load failed", "加载失败")}: ${esc(e)}</div>`; }
 }
 
 function openModal(i){
   const m = (window.__ITEMS||[])[i]; if(!m) return;
   current = m;
   const L = m.layers||{};
-  const box = (name,cls,o)=> o ? `<div class="layer-box l-${cls}"><div class="lname">${name} · ${esc(o.status||'')}</div>
-      <div class="ltext">${esc(o.content||'')}</div></div>` : `<div class="layer-box l-${cls}"><div class="lname">${name}</div><div class="ltext">—</div></div>`;
-  document.getElementById('mTitle').textContent = `${m.vendor||'Purchase 采购'} · $${Number(m.amount_usd||0).toFixed(2)}`;
+  const box = (enName,zhName,cls,o)=> o ? `<div class="layer-box l-${cls}"><div class="lname" data-en="${enName}" data-zh="${zhName}">${enName} ${zhName} · ${esc(o.status||'')}</div>
+      <div class="ltext">${esc(o.content||'')}</div></div>` : `<div class="layer-box l-${cls}"><div class="lname" data-en="${enName}" data-zh="${zhName}">${enName} ${zhName}</div><div class="ltext">—</div></div>`;
+  document.getElementById('mTitle').textContent = `${m.vendor||MPLang.T("Purchase","采购")} · $${Number(m.amount_usd||0).toFixed(2)}`;
   document.getElementById('mBody').innerHTML = `
-    <div class="note"><span data-en="This request exceeds the agent's single-transaction authorisation, so it stops and waits for a human. The agent continues only after you approve — the final authorisation always stays with the human." data-zh="这笔请求超出 Agent 的单笔授权额度，因此停下来等人确认。你批准后 Agent 才继续，人始终握有最终授权权。">This request exceeds the agent's single-transaction authorisation, so it <b>stops and waits for a human</b>. The agent continues only after you approve — the final authorisation always stays with the human. · 这笔请求超出 Agent 的单笔授权额度，因此停下来等人确认。你批准后 Agent 才继续，人始终握有最终授权权。</span></div>
+    <div class="note"><span data-en="This request exceeds the agent's single-transaction authorisation, so it stops and waits for a human. The agent continues only after you approve — the final authorisation always stays with the human." data-zh="这笔请求超出 Agent 的单笔授权额度，因此停下来等人确认。你批准后 Agent 才继续，人始终握有最终授权权。">This request exceeds the agent's single-transaction authorisation, so it stops and waits for a human. The agent continues only after you approve — the final authorisation always stays with the human. · 这笔请求超出 Agent 的单笔授权额度，因此停下来等人确认。你批准后 Agent 才继续，人始终握有最终授权权。</span></div>
     <div class="kv"><span class="k" data-en="Vendor" data-zh="供应商">Vendor 供应商</span><span class="v">${esc(m.vendor||'—')}</span></div>
     <div class="kv"><span class="k" data-en="Item" data-zh="商品">Item 商品</span><span class="v">${esc(m.cart||'—')}</span></div>
     <div class="kv"><span class="k" data-en="Amount" data-zh="金额">Amount 金额</span><span class="v">$${Number(m.amount_usd||0).toFixed(2)}</span></div>
@@ -152,7 +152,7 @@ function openModal(i){
     <div class="kv"><span class="k" data-en="Status" data-zh="状态">Status 状态</span><span class="v"><span class="badge b-${String(m.status||'').toLowerCase()}">${esc(m.status)}</span></span></div>
     <div class="kv"><span class="k">trace_id</span><span class="v">${esc(m.trace_id||'—')}</span></div>
     <div class="layers">
-      ${box('Intent layer 层','intent',L.intent)}${box('Cart layer 层','cart',L.cart)}${box('Payment layer 层','payment',L.payment)}
+      ${box('Intent layer','\u610F\u56FE\u5C42','intent',L.intent)}${box('Cart layer','\u8D2D\u7269\u8F66\u5C42','cart',L.cart)}${box('Payment layer','\u652F\u4ED8\u5C42','payment',L.payment)}
     </div>
     ${m.order_id?`<div class="kv"><span class="k" data-en="PayPal order" data-zh="订单">PayPal order 订单</span><span class="v">${esc(m.order_id)}</span></div>`:''}`;
 
@@ -170,24 +170,26 @@ document.getElementById('mask').addEventListener('click', e=>{ if(e.target.id===
 
 async function confirmPay(){
   if(!current) return;
-  const msg=document.getElementById('msg'); msg.className=''; msg.textContent='Capturing… 捕获中……';
+  const msg=document.getElementById('msg'); msg.className=''; msg.textContent=MPLang.T('Capturing…','捕获中……');
   try{
     const d = await (await fetch('/api/mandates/confirm',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({order_id:current.order_id, mandate_uuid:current.mandate_uuid})})).json();
     msg.className = d.completed?'ok':'err';
-    msg.textContent = d.completed ? `✅ Loop closed — capture ${d.capture_id} · 闭环完成` : `Not captured (status ${d.status}). Confirm you completed "Pay now" on PayPal. · 未捕获成功`;
+    msg.textContent = d.completed
+      ? MPLang.T(`✅ Loop closed — capture ${d.capture_id}`, `✅ 闭环完成 — capture ${d.capture_id}`)
+      : MPLang.T(`Not captured (status ${d.status}). Confirm you completed "Pay now" on PayPal.`, `未捕获成功（status ${d.status}）。请确认已在 PayPal 点过「立即付款」。`);
     closeModal(); loadList();
-  }catch(e){ msg.className='err'; msg.textContent='Capture failed: '+e+' · 捕获失败'; }
+  }catch(e){ msg.className='err'; msg.textContent=MPLang.T('Capture failed: '+e,'捕获失败：'+e); }
 }
 
 async function rejectIt(){
   if(!current) return;
-  const msg=document.getElementById('msg'); msg.className=''; msg.textContent='Rejecting… 拒绝中……';
+  const msg=document.getElementById('msg'); msg.className=''; msg.textContent=MPLang.T('Rejecting…','拒绝中……');
   try{
     const d = await (await fetch(`/api/approvals/${encodeURIComponent(current.trace_id)}/reject`,{method:'POST'})).json();
-    msg.className='ok'; msg.textContent=`✕ Rejected (updated ${d.updated} layer records) · 已拒绝`;
+    msg.className='ok'; msg.textContent=MPLang.T(`✕ Rejected (updated ${d.updated} layer records)`, `✕ 已拒绝（更新了 ${d.updated} 条层记录）`);
     closeModal(); loadList();
-  }catch(e){ msg.className='err'; msg.textContent='Reject failed: '+e+' · 拒绝失败'; }
+  }catch(e){ msg.className='err'; msg.textContent=MPLang.T('Reject failed: '+e,'拒绝失败：'+e); }
 }
 
 document.getElementById('tabs').addEventListener('click', e=>{

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MandatePay · PayPal Sandbox Checkout</title>
+  <title data-en="MandatePay · PayPal Sandbox Checkout" data-zh="MandatePay · 沙箱支付测试">MandatePay · PayPal Sandbox Checkout</title>
   <style>
     body { font-family: "Microsoft YaHei", system-ui, sans-serif; max-width: 560px; margin: 48px auto; padding: 0 16px; color: #1a2433; }
     h1 { font-size: 22px; color: #003087; }
@@ -35,17 +35,18 @@
           body: JSON.stringify({ amount: 10.0 })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || "Failed to create order · 创建订单失败");
+        if (!res.ok) throw new Error(data.detail || MPLang.T("Failed to create order", "创建订单失败"));
         return data.id;
       },
       onApprove: async (data) => {
         const res = await fetch(`/api/capture-order/${data.orderID}`, { method: "POST" });
         const result = await res.json();
-        document.getElementById("status").textContent =
-          "Payment status: " + (result.status || JSON.stringify(result)) + " · 支付状态";
+        const box = document.getElementById("status");
+        const s = result.status || JSON.stringify(result);
+        box.textContent = MPLang.T("Payment status: " + s, "支付状态：" + s);
       },
       onError: (err) => {
-        document.getElementById("status").textContent = "Error: " + err + " · 错误";
+        document.getElementById("status").textContent = MPLang.T("Error: " + err, "错误：" + err);
       }
     }).render("#paypal-button-container");
   </script>

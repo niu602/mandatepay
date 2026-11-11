@@ -97,16 +97,45 @@ def render(browser: str, url: str, budget_ms: int = 11000) -> str:
 
 
 def visible_text_nodes(dom: str) -> list[str]:
-    """剥掉 script/style，取出所有可见文本节点。"""
+    """剥掉 script/style，取出所有可见文本节点。
+
+    i18n 三态：带 data-en/data-zh 的元素，文本由 i18n.js 按模式重写
+    （zh 模式必然是纯中文）。那是用户主动选的语言，不是"漏改"，
+    所以这些元素的文本不进检查范围 —— 否则切到中文就永远报失败。
+    """
     clean = re.sub(r"<script[^>]*>.*?</script>", " ", dom, flags=re.S | re.I)
     clean = re.sub(r"<style[^>]*>.*?</style>", " ", clean, flags=re.S | re.I)
-    # 去掉注释
     clean = re.sub(r"<!--.*?-->", " ", clean, flags=re.S)
-    nodes = []
-    for m in re.finditer(r">([^<>]+)<", clean):
-        s = m.group(1).strip()
-        if s:
-            nodes.append(s)
+    clean = re.sub(r"<!DOCTYPE[^>]*>", " ", clean, flags=re.I)
+
+    tag = re.compile(r"<(/?)([a-zA-Z][\w-]*)([^>]*)>")
+    void = {"br", "img", "input", "meta", "link", "hr", "source", "area",
+            "base", "col", "embed", "param", "track", "wbr"}
+    managed = re.compile(r"\bdata-(?:en|zh|ph-en|ph-zh)=")
+
+    nodes: list[str] = []
+    stack: list[bool] = []
+    skip = 0
+    pos = 0
+    for m in tag.finditer(clean):
+        chunk = clean[pos:m.start()].strip()
+        if chunk and skip == 0:
+            nodes.append(chunk)
+        pos = m.end()
+        closing, name, attrs = m.group(1), m.group(2).lower(), m.group(3)
+        if name in void:
+            continue
+        if closing:
+            if stack and stack.pop():
+                skip -= 1
+        else:
+            hit = bool(managed.search(attrs))
+            stack.append(hit)
+            if hit:
+                skip += 1
+    tail = clean[pos:].strip()
+    if tail and skip == 0:
+        nodes.append(tail)
     return nodes
 
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MandatePay · Three-layer Mandate Audit 三层 Mandate 审计日志</title>
+  <title data-en="MandatePay · Three-layer Mandate Audit" data-zh="MandatePay · 三层 Mandate 审计日志">MandatePay · Three-layer Mandate Audit 三层 Mandate 审计日志</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -76,11 +76,12 @@
   <div class="sub" data-en="Every transaction leaves three traceable authorisation records: Intent (what was allowed) → Cart (what was bought) → Payment (how the money moved)" data-zh="每一笔交易都留下三层可追溯的授权记录">Every transaction leaves three traceable authorisation records: Intent (what was allowed) → Cart (what was bought) → Payment (how the money moved) · 每一笔交易都留下三层可追溯的授权记录</div>
 
   <div class="note">
-    <b data-en="Why does a human have to confirm?" data-zh="为什么需要「人确认」？">Why does a human have to confirm? · 为什么需要「人确认」？</b> After the agent places an order the status is
-    <code>PAYER_ACTION_REQUIRED</code> — a human must complete the payment on PayPal before money moves.
+    <b data-en="Why does a human have to confirm?" data-zh="为什么需要「人确认」？">Why does a human have to confirm? · 为什么需要「人确认」？</b>
+    <span data-en="After the agent places an order the status is PAYER_ACTION_REQUIRED — a human must complete the payment on PayPal before money moves. That is MandatePay's security design, not a defect: the AI cannot spend behind your back, and the final authorisation stays with the human (human authorises, machine executes)." data-zh="Agent 下单后状态是 PAYER_ACTION_REQUIRED —— 必须人去 PayPal 完成付款，钱才会动。这是 MandatePay 的安全设计，不是缺陷：AI 不能偷偷花钱，最终授权权在人手里（人授权，机器执行）。">After the agent places an order the status is
+    PAYER_ACTION_REQUIRED — a human must complete the payment on PayPal before money moves.
     That is MandatePay's security design, not a defect: the AI cannot spend behind your back,
     and the final authorisation stays with the human (human authorises, machine executes).
-    · 这是 MandatePay 的安全设计，不是缺陷。AI 不能偷偷花钱，最终授权权在人手里。
+    · 这是 MandatePay 的安全设计，不是缺陷。AI 不能偷偷花钱，最终授权权在人手里。</span>
   </div>
 
   <div class="card">
@@ -89,7 +90,7 @@
   </div>
 
   <div class="card">
-    <h2 data-en="Audit log" data-zh="审计日志">Audit log 审计日志 <span id="totalHint" style="font-weight:400;color:#5a6b82;font-size:13px"></span></h2>
+    <h2><span data-en="Audit log" data-zh="审计日志">Audit log 审计日志</span> <span id="totalHint" style="font-weight:400;color:#5a6b82;font-size:13px"></span></h2>
     <div id="mandates"><div class="empty" data-en="Loading…" data-zh="加载中……">Loading… 加载中……</div></div>
     <div class="pager" id="pager"></div>
   </div>
@@ -112,18 +113,18 @@ async function loadConstraint() {
     el.innerHTML = `
       <div class="kv"><span class="k" data-en="Monthly budget" data-zh="月度滚动预算">Monthly budget 月度滚动预算</span><span class="v">$${c.monthly_budget_usd}</span></div>
       <div class="kv"><span class="k" data-en="Per-transaction threshold" data-zh="单笔确认阈值">Per-transaction threshold 单笔确认阈值</span><span class="v">$${c.single_tx_threshold_usd}</span></div>
-      <div class="kv"><span class="k" data-en="Daily cumulative threshold" data-zh="日累计阈值">Daily cumulative threshold 日累计阈值</span><span class="v">${c.daily_threshold_usd ? '$'+c.daily_threshold_usd : 'none 不限'}</span></div>
-      <div class="kv"><span class="k" data-en="Vendor allowlist" data-zh="供应商白名单">Vendor allowlist 供应商白名单</span><span class="v">${esc((c.vendor_whitelist||[]).join(', ') || 'none 不限')}</span></div>
-      <div class="kv"><span class="k" data-en="Category allowlist" data-zh="品类白名单">Category allowlist 品类白名单</span><span class="v">${esc((c.category_whitelist||[]).join(', ') || 'none 不限')}</span></div>`;
+      <div class="kv"><span class="k" data-en="Daily cumulative threshold" data-zh="日累计阈值">Daily cumulative threshold 日累计阈值</span><span class="v">${c.daily_threshold_usd ? '$'+c.daily_threshold_usd : MPLang.T("none","不限")}</span></div>
+      <div class="kv"><span class="k" data-en="Vendor allowlist" data-zh="供应商白名单">Vendor allowlist 供应商白名单</span><span class="v">${esc((c.vendor_whitelist||[]).join(', ') || MPLang.T("none","不限"))}</span></div>
+      <div class="kv"><span class="k" data-en="Category allowlist" data-zh="品类白名单">Category allowlist 品类白名单</span><span class="v">${esc((c.category_whitelist||[]).join(', ') || MPLang.T("none","不限"))}</span></div>`;
   } catch (e) {
-    document.getElementById('constraint').innerHTML = `<div class="empty">Load failed: ${esc(e)} · 加载失败</div>`;
+    document.getElementById('constraint').innerHTML = `<div class="empty">${MPLang.T("Load failed", "加载失败")}: ${esc(e)}</div>`;
   }
 }
 
 function layerBox(enName, zhName, cls, obj, isLast){
-  if(!obj) return `<div class="layer-box l-${cls}"><div class="lname" data-en="${enName}" data-zh="${zhName}">${enName} 层</div><div class="ltext">—</div></div>`;
+  if(!obj) return `<div class="layer-box l-${cls}"><div class="lname" data-en="${enName}" data-zh="${zhName}">${enName} ${zhName}</div><div class="ltext">—</div></div>`;
   return `<div class="layer-box l-${cls}">
-      <div class="lname" data-en="${enName}" data-zh="${zhName}">${enName} 层 · ${esc(obj.status||'')}</div>
+      <div class="lname" data-en="${enName}" data-zh="${zhName}">${enName} ${zhName} · ${esc(obj.status||'')}</div>
       <div class="ltext">${esc(obj.content||'')}</div>
       <div class="lsub">uuid ${esc(obj.mandate_uuid||'')}<br>${esc((obj.created_at||'').slice(0,19).replace('T',' '))}</div>
     </div>${isLast?'':'<div class="layer-connector">›</div>'}`;
@@ -134,9 +135,9 @@ async function loadMandates() {
   try {
     const d = await (await fetch(`/api/mandates?limit=${PAGE_SIZE}&offset=${page*PAGE_SIZE}`)).json();
     total = d.total || 0;
-    document.getElementById('totalHint').textContent = `${total} transactions · page ${page+1} · 共 ${total} 笔交易`;
+    document.getElementById('totalHint').textContent = MPLang.T(`${total} transactions · page ${page+1}`, `共 ${total} 笔交易 · 第 ${page+1} 页`);
     if (!d.items || !d.items.length) {
-      el.innerHTML = `<div class="empty">${page>0?'This page is empty 本页为空':'No records 暂无记录'}</div>`;
+      el.innerHTML = `<div class="empty">${page>0 ? MPLang.T("This page is empty","本页为空") : MPLang.T("No records","暂无记录")}</div>`;
       renderPager(); return;
     }
     el.innerHTML = d.items.map(m => {
@@ -171,7 +172,7 @@ async function loadMandates() {
     }).join('');
     renderPager();
   } catch (e) {
-    el.innerHTML = `<div class="empty">Load failed: ${esc(e)} · 加载失败</div>`;
+    el.innerHTML = `<div class="empty">${MPLang.T("Load failed", "加载失败")}: ${esc(e)}</div>`;
   }
 }
 
@@ -179,14 +180,14 @@ function renderPager(){
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   document.getElementById('pager').innerHTML = `
     <button class="btn btn-sm gray" ${page<=0?'disabled':''} onclick="goPage(${page-1})" data-en="‹ Previous" data-zh="‹ 上一页">‹ Previous 上一页</button>
-    <span>第 ${page+1} / ${pages} 页</span>
+    <span data-en="Page ${page+1} / ${pages}" data-zh="第 ${page+1} / ${pages} 页">Page ${page+1} / ${pages} · 第 ${page+1} / ${pages} 页</span>
     <button class="btn btn-sm gray" ${page>=pages-1?'disabled':''} onclick="goPage(${page+1})" data-en="Next ›" data-zh="下一页 ›">Next › 下一页</button>`;
 }
 function goPage(p){ page = Math.max(0, p); loadMandates(); window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'}); }
 
 async function confirmPay(orderId, mandateUuid) {
   const msg = document.getElementById('msg');
-  msg.className = ''; msg.textContent = 'Capturing… 捕获中……';
+  msg.className = ''; msg.textContent = MPLang.T('Capturing…','捕获中……');
   try {
     const d = await (await fetch('/api/mandates/confirm', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -194,10 +195,10 @@ async function confirmPay(orderId, mandateUuid) {
     })).json();
     msg.className = d.completed ? 'ok' : 'err';
     msg.textContent = d.completed
-      ? `✅ Loop closed — capture ${d.capture_id} · 闭环完成`
-      : `Not captured (status ${d.status}). Confirm you completed "Pay now" on the PayPal page. · 未捕获成功`;
+      ? MPLang.T(`✅ Loop closed — capture ${d.capture_id}`, `✅ 闭环完成 — capture ${d.capture_id}`)
+      : MPLang.T(`Not captured (status ${d.status}). Confirm you completed "Pay now" on the PayPal page.`, `未捕获成功（status ${d.status}）。请确认已在 PayPal 页面点过「立即付款」。`);
     loadMandates();
-  } catch (e) { msg.className = 'err'; msg.textContent = 'Capture failed: ' + e + ' · 捕获失败'; }
+  } catch (e) { msg.className = 'err'; msg.textContent = MPLang.T('Capture failed: '+e,'捕获失败：'+e); }
 }
 
 loadConstraint();

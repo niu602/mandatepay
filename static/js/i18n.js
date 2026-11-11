@@ -1,18 +1,26 @@
 /* MandatePay · 中英切换 (i18n toggle)
  *
  * 设计要点（与 W-10 检查器兼容）：
- * - 中文文案只放在 data-zh 属性里，不进 JS 字符串字面量。
- *   scripts/check_ui_english.py 的静态检查只看 HTML 文本节点和 JS 字符串，
- *   属性值不在检查范围内，因此不会被判"纯中文"。
+ * - 结构性文案（导航/标题/标签/按钮）放 data-en / data-zh 属性；
+ *   输入框提示用独立的 data-ph-en / data-ph-zh —— 输入框正文是用户数据，
+ *   绝不能被 textContent 覆盖。属性值不在静态检查范围内。
  * - 每个可切换元素同时有 data-en 和 data-zh，文本节点默认放双语（英文在前）。
  *   这样：无 JS 时显示双语（与现状一致）、静态检查看到英文、渲染检查通过。
- * - 切换时 JS 重写 textContent。
+ * - JS 运行时文案用 MPLang.T(en, zh)；check_ui_english.py 会把这类
+ *   双语助手调用合并成一个渲染单元，不会把中文参数误判成"纯中文区块"。
+ * - 切换时 JS 重写 textContent；<html lang> 同步跟随（读屏软件可读）。
+ *
+ * 载荷规则（data-en / data-zh 的取值）：
+ * - 两个属性都有非空值：both/en/zh 三态切换文本。
+ * - data-en=""（纯中文载荷）：en 模式下隐藏该节点，zh/both 显示中文原文。
+ * - data-zh=""（纯英文载荷）：zh 模式下隐藏该节点，en/both 显示英文原文。
  *
  * 三个模式：both（双语，默认）/ en（纯英文）/ zh（纯中文）。
- * 选择存 localStorage，刷新保持。动态渲染后需调用 MPLang.apply()。
+ * 选择存 localStorage，刷新保持。动态渲染后 MutationObserver 自动套用。
+ * setMode 会派发 mplangchange 事件，动态视图（如 AG Studio 仪表盘）可监听后重建标签。
  *
- * 说明：JS 运行时拼接的状态/提示文案（如"捕获中……"）保持双语、不参与切换，
- * 因为它们不是预置文本节点；结构性 UI（导航/标题/标签/按钮）全部可切换。
+ * 说明：JS 运行时拼接的状态/提示文案用 MPLang.T(en, zh) 按模式取；
+ * 结构性 UI（导航/标题/标签/按钮）用 data-en/data-zh 属性。
  */
 (function () {
   'use strict';
@@ -25,25 +33,24 @@
     return MODES.indexOf(m) >= 0 ? m : 'both';
   }
 
+  function hide(el) { if (el.style) el.style.display = 'none'; }
+  function show(el) { if (el.style) el.style.display = ''; }
+
+  // T(en, zh)：JS 运行时文案助手。both 返回双语，en 返回英文，zh 返回中文。
+  function T(en, zh) {
+    var m = getMode();
+    if (m === 'en') return en;
+    if (m === 'zh') return zh;
+    return en + ' ' + zh;
+  }
+
   function apply(root) {
     var r = root || document;
     var mode = getMode();
-    var nodes = r.querySelectorAll('[data-en][data-zh]');
+    document.documentElement.lang = mode === 'zh' ? 'zh-CN' : 'en';
+    var nodes = r.querySelectorAll('[data-en][data-zh], [data-ph-en][data-ph-zh]');
     for (var i = 0; i < nodes.length; i++) {
-      var el = nodes[i];
-      // 首次遇到时记住原始（双语）文本，供 both 模式无损还原
-      if (el._mpOrig === undefined) {
-        el._mpOrig = el.textContent;
-      }
-      var en = el.getAttribute('data-en') || '';
-      var zh = el.getAttribute('data-zh') || '';
-      if (mode === 'zh') {
-        el.textContent = zh;
-      } else if (mode === 'en') {
-        el.textContent = en;
-      } else {
-        el.textContent = el._mpOrig;
-      }
+      syncNode(nodes[i], mode);
     }
     paintButton();
   }
@@ -52,6 +59,9 @@
     if (MODES.indexOf(mode) < 0) return;
     try { localStorage.setItem(KEY, mode); } catch (e) {}
     apply();
+    if (typeof document !== 'undefined' && document.dispatchEvent) {
+      document.dispatchEvent(new CustomEvent('mplangchange', { detail: { mode: mode } }));
+    }
   }
 
   function cycleMode() {
@@ -64,7 +74,7 @@
     if (!btn) return;
     var label = { both: 'EN · 中文', en: 'English', zh: '中文' }[getMode()];
     btn.textContent = label;
-    btn.title = '切换界面语言 · Switch UI language';
+    btn.title = T('Switch UI language', '切换界面语言');
   }
 
   function injectStyle() {
@@ -102,11 +112,12 @@
         for (var j = 0; j < added.length; j++) {
           var n = added[j];
           if (n.nodeType !== 1) continue;
-          if (n.hasAttribute && n.hasAttribute('data-en') && n.hasAttribute('data-zh')) {
+          if (n.hasAttribute && (n.hasAttribute('data-ph-en') ||
+              (n.hasAttribute('data-en') && n.hasAttribute('data-zh')))) {
             syncNode(n, getMode());
           }
           if (n.querySelectorAll) {
-            var inner = n.querySelectorAll('[data-en][data-zh]');
+            var inner = n.querySelectorAll('[data-en][data-zh], [data-ph-en][data-ph-zh]');
             for (var k = 0; k < inner.length; k++) syncNode(inner[k], getMode());
           }
         }
@@ -115,17 +126,48 @@
     obs.observe(document.body, { childList: true, subtree: true });
   }
 
-  // 对单个节点按当前模式设置文本（与 apply 同逻辑，但只针对一个节点）
+  // 对单个节点按指定模式设置文本/显隐（apply 的核心逻辑）
   function syncNode(el, mode) {
+    // 输入框提示：只改 placeholder，绝不碰 textContent（那是用户填的数据）。
+    var phEn = el.getAttribute('data-ph-en');
+    var phZh = el.getAttribute('data-ph-zh');
+    if (phEn !== null || phZh !== null) {
+      if (el._mpPhOrig === undefined) el._mpPhOrig = el.placeholder || '';
+      if (mode === 'en' && phEn !== null) el.placeholder = phEn;
+      else if (mode === 'zh' && phZh !== null) el.placeholder = phZh;
+      else el.placeholder = el._mpPhOrig;
+      // 纯 placeholder 节点（没有 data-en/data-zh）到此为止
+      if (!el.hasAttribute('data-en') && !el.hasAttribute('data-zh')) return;
+    }
     if (el._mpOrig === undefined) el._mpOrig = el.textContent;
-    var en = el.getAttribute('data-en') || '';
-    var zh = el.getAttribute('data-zh') || '';
-    if (mode === 'zh') el.textContent = zh;
-    else if (mode === 'en') el.textContent = en;
-    else el.textContent = el._mpOrig;
+    var hasEn = el.hasAttribute('data-en');
+    var hasZh = el.hasAttribute('data-zh');
+    var en = hasEn ? el.getAttribute('data-en') : null;
+    var zh = hasZh ? el.getAttribute('data-zh') : null;
+    if (mode === 'zh') {
+      // 纯英文载荷（data-zh=""）→ 中文模式下隐藏
+      if (hasZh && zh === '' && hasEn && en !== '') { hide(el); return; }
+      show(el);
+      el.textContent = (hasZh && zh !== '') ? zh : el._mpOrig;
+    } else if (mode === 'en') {
+      // 纯中文载荷（data-en=""）→ 英文模式下隐藏
+      if (hasEn && en === '' && hasZh && zh !== '') { hide(el); return; }
+      show(el);
+      el.textContent = (hasEn && en !== '') ? en : el._mpOrig;
+    } else {
+      show(el);
+      el.textContent = el._mpOrig;
+    }
   }
 
-  window.MPLang = { apply: apply, set: setMode, get: getMode, inject: injectButton, syncNode: syncNode };
+  window.MPLang = {
+    apply: apply,
+    set: setMode,
+    get: getMode,
+    inject: injectButton,
+    syncNode: syncNode,
+    T: T
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () { injectButton(); apply(); observeDynamic(); });

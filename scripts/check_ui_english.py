@@ -99,23 +99,43 @@ def visible_chunks(html: str) -> list[tuple[str, str]]:
     return chunks
 
 
+# 双语文案助手：i18n 切换引入后，中文不再挤在一条双语字符串里，
+# 而是作为 MPLang.T / L / setStatus 的第二个参数单独存放。
+# 这些中文片段在源码里"单独看是纯中文"，但运行时只会渲染其中一种语言
+# （both 模式才拼成一条双语文本），所以不能按纯中文区块误报。
+BILINGUAL_CALL = re.compile(r"\b(?:MPLang\.T|L|setStatus)\s*\(")
+
+
 def merge_js_concat_units(js: str) -> list[str]:
-    """把 JS 里用 `+` 连接的字符串片段合并成一个"渲染单元"。
+    """把 JS 里用 `+` 连接的字符串片段、或双语助手调用合并成一个"渲染单元"。
 
     为什么需要：形如
         msg.textContent = "Payment status: " + (x) + " · 支付状态";
     渲染出来是**一条连续文本**（英文在前、中文在后），
     但按字面量切分会得到两个片段，其中"· 支付状态"单独看是纯中文 → 误报。
 
-    实现：**按行处理**。JS 里 `+` 拼接的表达式基本都在一行内（跨行的极少），
-    所以逐行看"有没有 `+`"，有就把该行的字符串字面量拼起来。
-    比正则匹配 `+` 链稳得多 —— 链里可能有嵌套括号、转义引号（`\"`）、
-    函数调用，正则很难覆盖全。
+    i18n 之后又多了一类：
+        label = MPLang.T("Auto-approved", "自动通过");
+        name  = L("Monthly Budget", "月度预算");
+        setStatus("Loading…", "正在加载…");
+    中文参数单独看是纯中文，但它是"另一种语言的备选文案"，不是可见区块。
+
+    实现：**按行处理**。JS 里 `+` 拼接和双语助手调用基本都在一行内，
+    所以逐行判断，把该行的字符串字面量拼起来作为渲染单元。
+    比正则匹配调用链稳得多 —— 链里可能有嵌套括号、模板字符串、转义引号，
+    正则很难覆盖全。
     """
     units: list[str] = []
     for line in js.splitlines():
-        if "+" not in line:
+        bilingual_line = bool(BILINGUAL_CALL.search(line))
+        if "+" not in line and not bilingual_line:
             continue
+        if bilingual_line and CJK.search(line):
+            # 模板字符串里常内嵌 T()：`<div>${MPLang.T("EN","中文")}</div>`。
+            # 按字面量切会把模板整段当成一个字符串、把中文参数拆散，
+            # 导致中文片段匹配不上任何 unit。整行作为渲染单元最稳：
+            # 该行必然带英文（助手的第一个参数），片段也必然是它的子串。
+            units.append(line.strip())
         # 提取该行的字符串字面量（处理 \" 这种转义：先按未转义的引号切）
         parts = re.findall(r"""(?<!\\)(?:"([^"]*)"|'([^']*)'|`([^`]*)`)""", line)
         texts = [a or b or c for (a, b, c) in parts]
@@ -171,7 +191,8 @@ def main() -> int:
 
         # lang 属性与 title 单独查
         lang = re.search(r'<html[^>]*lang="([^"]+)"', html)
-        title = re.search(r"<title>(.*?)</title>", html, flags=re.S)
+        # i18n 切换后 <title> 也带 data-en/data-zh，不能用严格的 <title> 字面量
+        title = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.S)
         lang_ok = bool(lang and lang.group(1).startswith("en"))
         title_txt = (title.group(1).strip() if title else "")
         title_ok = bool(LATIN.search(title_txt))

@@ -103,7 +103,8 @@ def test_lang_is_english(name):
 def test_title_has_english(name):
     """`<title>` 必须含英文（原来四个是纯中文）。"""
     html = _read(name)
-    m = re.search(r"<title>(.*?)</title>", html, flags=re.S)
+    # <title> 现在带 data-en/data-zh（浏览器标签也跟着语言切换）
+    m = re.search(r"<title[^>]*>(.*?)</title>", html, flags=re.S)
     assert m, f"{name} 没有 title"
     assert LATIN.search(m.group(1)), f"{name} 的 title 应含英文：{m.group(1)!r}"
 
@@ -194,8 +195,8 @@ def test_index_page_has_nav_with_current_page_highlighted():
                  'href="/approvals"', 'href="/audit"'):
         assert href in nav, f"首页导航缺少 {href}"
     assert 'class="current" href="/"' in nav, "当前页（/）应高亮 class=\"current\""
-    # 标题与金额说明
-    assert "<title>MandatePay · PayPal Sandbox Checkout</title>" in html
+    # 标题与金额说明（title 带 data-en/data-zh，用正则而非字面量）
+    assert re.search(r"<title[^>]*>MandatePay · PayPal Sandbox Checkout</title>", html)
     assert "PayPal Sandbox" in html
     assert "Amount" in html
 
@@ -264,3 +265,68 @@ def test_detects_pure_chinese_inside_template_string():
     chunks = visible_chunks(broken)
     hits = [txt for _, txt in chunks if txt == "供应商"]
     assert hits, "模板字符串里的纯中文标签「供应商」应被检出"
+
+
+# ──────────────────────────────────────────────────────
+# 4. i18n 三态切换回归（W-15）
+# ──────────────────────────────────────────────────────
+
+I18N_JS = ROOT / "static" / "js" / "i18n.js"
+
+
+@pytest.mark.parametrize("name", PAGES)
+def test_page_loads_shared_i18n_script(name):
+    """五页都引入同一份切换脚本，且 <title> 也参与切换。"""
+    html = _read(name)
+    assert "/static/js/i18n.js" in html, f"{name} 未引入 i18n.js"
+    m = re.search(r"<title([^>]*)>(.*?)</title>", html, flags=re.S)
+    assert m, f"{name} 没有 title"
+    assert "data-en" in m.group(1) and "data-zh" in m.group(1), (
+        f"{name} 的 <title> 缺 data-en/data-zh，切换语言时浏览器标签不会跟着变"
+    )
+
+
+def test_i18n_script_contract():
+    """both/en/zh 三态 + mplangchange 事件 + T() + placeholder + lang 同步。
+
+    少任何一样，动态视图（AG Studio）或输入框提示就会退回双语并排。
+    """
+    js = I18N_JS.read_text(encoding="utf-8")
+    for token in ("MODES = ['both', 'en', 'zh']", "mplangchange", "T: T",
+                  "data-ph-en", "data-ph-zh", "document.documentElement.lang"):
+        assert token in js, f"i18n.js 缺少契约：{token}"
+
+
+@pytest.mark.parametrize("name", PAGES)
+def test_no_html_tags_inside_data_en_or_zh(name):
+    """属性值会被 textContent 直接写入，含标签会显示成字面量 "<b>"。
+
+    实测踩过：approvals.html 弹窗 note 的 data-en 曾写
+    `it <b>stops and waits for a human</b>`，切到英文后屏幕上出现 "<b>"。
+    """
+    html = _read(name)
+    for attr, val in re.findall(r'\bdata-(en|zh)="([^"]*)"', html):
+        assert not re.search(r"</?[a-zA-Z][^>]*>", val), (
+            f"{name} 的 data-{attr} 含 HTML 标签：{val[:80]}"
+        )
+
+
+def test_budget_rebuilds_studio_on_language_change():
+    """AG Studio 的 KPI / 字段 / 图表标签是代码预定义的，
+    切语言必须重建 config 再 setState，否则仪表盘永远停在首次加载的语言。"""
+    html = _read("budget.html")
+    assert "mplangchange" in html, "budget.html 未监听语言切换事件"
+    assert "buildStudio(d)" in html, "缺少可重建的仪表盘配置工厂"
+    assert "setState(cfg.report)" in html, "切语言后没有用新 config 调 setState"
+
+
+def test_rendered_checker_skips_i18n_managed_nodes():
+    """渲染后检查必须跳过 data-en/data-zh 元素：zh 模式下它们必然是纯中文，
+    那是用户主动选的语言，不是漏改；但没被托管的节点仍然要查。"""
+    from check_ui_rendered import visible_text_nodes
+
+    dom = ('<h1 data-en="Budget" data-zh="预算">预算</h1>'
+           '<div><span>纯中文没有被托管</span></div>')
+    nodes = visible_text_nodes(dom)
+    assert "预算" not in nodes, "i18n 托管节点不应被当成纯中文区块"
+    assert any("纯中文没有被托管" in n for n in nodes), "未托管节点必须仍被检查"

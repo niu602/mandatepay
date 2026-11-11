@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MandatePay · Constraints 约束设定</title>
+  <title data-en="MandatePay · Constraints" data-zh="MandatePay · 约束设定">MandatePay · Constraints 约束设定</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -79,15 +79,15 @@
 
   <div class="note">
     <b data-en="Two places the AI takes part" data-zh="两处 AI 参与">Two places the AI takes part · 两处 AI 参与：</b>
-    ① Type one sentence below to set your constraints — the AI parses it into structured rules.<br>
-    ② In the <b>Insight / Explanation</b> panel, try a purchase — the AI first works out your budget position, then gives an <b>insight</b>, then an <b>actionable explanation</b> for the verdict.
+    <span data-en="① Type one sentence below to set your constraints — the AI parses it into structured rules." data-zh="① 在下面输入一句话设定约束，AI 会把它解析成结构化规则。">① Type one sentence below to set your constraints — the AI parses it into structured rules. · ① 在下面输入一句话设定约束，AI 会把它解析成结构化规则。</span><br>
+    <span data-en="② In the Insight / Explanation panel, try a purchase — the AI first works out your budget position, then gives an insight, then an actionable explanation for the verdict." data-zh="② 在「消费洞察 / 决策解释」区试一笔采购 —— AI 先算预算位置，再给洞察，最后给可执行的决策解释。">② In the Insight / Explanation panel, try a purchase — the AI first works out your budget position, then gives an insight, then an actionable explanation for the verdict. · ② 在「消费洞察 / 决策解释」区试一笔采购 —— AI 先算预算位置，再给洞察，最后给可执行的决策解释。</span>
   </div>
 
   <!-- ① 约束设定 -->
   <div class="card">
     <h2 data-en="① Set constraints in plain English" data-zh="① 用自然语言设定约束">① Set constraints in plain English · 用自然语言设定约束</h2>
     <div class="hint" data-en='e.g. "SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma"' data-zh="例：「每月 SaaS 预算 200 美元，单笔超过 50 要先问我，只允许买 Notion 和 Figma」">e.g. "SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma" · 例：「每月 SaaS 预算 200 美元，单笔超过 50 要先问我，只允许买 Notion 和 Figma」</div>
-    <textarea id="cText" rows="2" placeholder="Describe your spending constraints in one sentence… · 用一句话描述你的花钱约束…">SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma</textarea>
+    <textarea id="cText" rows="2" data-ph-en="Describe your spending constraints in one sentence…" data-ph-zh="用一句话描述你的花钱约束…" placeholder="Describe your spending constraints in one sentence… · 用一句话描述你的花钱约束…">SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma</textarea>
     <div class="row"><button class="btn" onclick="setConstraint()" data-en="Parse & set constraints" data-zh="解析并设定约束">Parse &amp; set constraints · 解析并设定约束</button></div>
     <div id="cMsg" class="msg"></div>
     <div id="rules" style="display:none">
@@ -99,7 +99,7 @@
   <div class="card">
     <h2 data-en="② Insight / Explanation — try a purchase" data-zh="② 消费洞察 / 决策解释（试一笔采购）">② Insight / Explanation — try a purchase · 消费洞察 / 决策解释（试一笔采购）</h2>
     <div class="hint" data-en='e.g. "Buy Notion Pro for 10 dollars" or "Buy Slack Pro for 15 dollars" (blocked by the allowlist, with an explanation)' data-zh="例：「帮我买 Notion Pro，10 美元」或「买 Slack Pro，15 美元」（会被白名单拦截并给出解释）">e.g. "Buy Notion Pro for 10 dollars" or "Buy Slack Pro for 15 dollars" (blocked by the allowlist, with an explanation) · 例：「帮我买 Notion Pro，10 美元」或「买 Slack Pro，15 美元」（会被白名单拦截并给出解释）</div>
-    <input type="text" id="pText" placeholder="Describe a purchase, e.g. Buy Notion Pro for 10 dollars · 描述一笔采购，例：帮我买 Notion Pro，10 美元" value="Buy Notion Pro for 10 dollars">
+    <input type="text" id="pText" data-ph-en="Describe a purchase, e.g. Buy Notion Pro for 10 dollars" data-ph-zh="描述一笔采购，例：帮我买 Notion Pro，10 美元" placeholder="Describe a purchase, e.g. Buy Notion Pro for 10 dollars · 描述一笔采购，例：帮我买 Notion Pro，10 美元" value="Buy Notion Pro for 10 dollars">
     <div class="row"><button class="btn" onclick="tryPurchase()" data-en="Let the agent handle it" data-zh="让 Agent 处理">Let the agent handle it · 让 Agent 处理</button></div>
     <div id="pMsg" class="msg"></div>
     <div id="pOut" style="display:none">
@@ -118,30 +118,30 @@ function cls(d){
   return d==="AUTO_APPROVE"?"b-auto":d==="REQUIRE_HUMAN"?"b-human":d==="REJECT"?"b-reject":"b-set";
 }
 function label(d){
-  return {AUTO_APPROVE:"Auto-approved 自动通过",REQUIRE_HUMAN:"Needs human 需人工确认",REJECT:"Blocked 已拦截",PARSED_CONSTRAINT:"Constraints set 约束已设定"}[d]||d||"";
+  return {AUTO_APPROVE:MPLang.T("Auto-approved","自动通过"),REQUIRE_HUMAN:MPLang.T("Needs human","需人工确认"),REJECT:MPLang.T("Blocked","已拦截"),PARSED_CONSTRAINT:MPLang.T("Constraints set","约束已设定")}[d]||d||"";
 }
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
 
 async function setConstraint(){
   const text = document.getElementById("cText").value.trim();
   const msg = document.getElementById("cMsg");
-  if(!text){ msg.className="msg err"; msg.textContent="Please describe your constraints first · 请先输入约束描述"; return; }
-  msg.className="msg spin"; msg.textContent="AI parsing… (function calling → structured rules) · AI 解析中…";
+  if(!text){ msg.className="msg err"; msg.textContent=MPLang.T("Please describe your constraints first","请先输入约束描述"); return; }
+  msg.className="msg spin"; msg.textContent=MPLang.T("AI parsing… (function calling → structured rules)","AI 解析中…（function calling → 结构化规则）");
   try{
     const r = await fetch("/api/agent/parse",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({text, session_id:"web-constraint"})});
     const d = await r.json();
     if(d.decision!=="PARSED_CONSTRAINT"){
       msg.className="msg err";
-      msg.textContent='Not recognised as a constraint (decision='+d.decision+'). Try wording like "budget / threshold / allowlist". · 没识别成约束设定';
+      msg.textContent=MPLang.T('Not recognised as a constraint (decision='+d.decision+'). Try wording like "budget / threshold / allowlist".','没识别成约束设定（decision='+d.decision+'），试试写「budget / threshold / allowlist」这类措辞。');
       return;
     }
     const c = d.constraint;
-    msg.className="msg ok"; msg.textContent="✓ Constraints saved — here are the structured rules the AI parsed · 约束已保存";
+    msg.className="msg ok"; msg.textContent=MPLang.T("✓ Constraints saved — here are the structured rules the AI parsed","✓ 约束已保存 —— 下面是 AI 解析出的结构化规则");
     const cards = [
       ["Monthly budget", "月度预算", "$"+(c.monthly_budget_usd??0)],
       ["Per-transaction threshold", "单笔阈值", "$"+(c.single_tx_threshold_usd??0)],
-      ["Daily cumulative threshold", "日累计阈值", c.daily_threshold_usd?("$"+c.daily_threshold_usd):"none 不限"],
+      ["Daily cumulative threshold", "日累计阈值", c.daily_threshold_usd?("$"+c.daily_threshold_usd):MPLang.T("none","不限")],
     ];
     let html = cards.map(([en,zh,v])=>`<div class="rule"><div class="k" data-en="${en}" data-zh="${zh}">${en} ${zh}</div><div class="v">${esc(v)}</div></div>`).join("");
     html += `<div class="rule"><div class="k" data-en="Vendor allowlist" data-zh="供应商白名单">Vendor allowlist 供应商白名单</div><div class="chips">${
@@ -150,22 +150,22 @@ async function setConstraint(){
       (c.category_whitelist&&c.category_whitelist.length)?c.category_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty" data-en="none" data-zh="不限">none 不限</span>`}</div></div>`;
     document.getElementById("ruleCards").innerHTML = html;
     document.getElementById("rules").style.display="block";
-  }catch(e){ msg.className="msg err"; msg.textContent="Request failed: "+e+" · 请求失败"; }
+  }catch(e){ msg.className="msg err"; msg.textContent=MPLang.T("Request failed: "+e,"请求失败："+e); }
 }
 
 async function tryPurchase(){
   const text = document.getElementById("pText").value.trim();
   const msg = document.getElementById("pMsg");
-  if(!text){ msg.className="msg err"; msg.textContent="Please describe a purchase first · 请先描述一笔采购"; return; }
-  msg.className="msg spin"; msg.textContent="Agent working… (validate → insight → explain → approve) · Agent 处理中…";
+  if(!text){ msg.className="msg err"; msg.textContent=MPLang.T("Please describe a purchase first","请先描述一笔采购"); return; }
+  msg.className="msg spin"; msg.textContent=MPLang.T("Agent working… (validate → insight → explain → approve)","Agent 处理中…（校验 → 洞察 → 解释 → 授权）");
   document.getElementById("pOut").style.display="none";
   try{
     const r = await fetch("/api/agent/parse",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({text, session_id:"web-purchase-"+Date.now()})});
     const d = await r.json();
     document.getElementById("pBadge").innerHTML = `<span class="badge ${cls(d.decision)}">${label(d.decision)}</span>`;
-    document.getElementById("insightText").textContent = d.insight || "No insight generated this time （本次未生成洞察）";
-    document.getElementById("explainText").textContent = d.explanation || "No explanation generated this time （本次未生成解释）";
+    document.getElementById("insightText").textContent = d.insight || MPLang.T("No insight generated this time","本次未生成洞察");
+    document.getElementById("explainText").textContent = d.explanation || MPLang.T("No explanation generated this time","本次未生成解释");
 
     let det = "";
     const spend = d.spend||{};
@@ -174,10 +174,11 @@ async function tryPurchase(){
     const pr = d.payment_result;
     if(pr){
       if(pr.status==="SKIPPED"){
-        det += `<div class="kv"><div class="k" data-en="Payment" data-zh="支付">Payment 支付</div><div class="v">No order created (${esc(pr.reason||"blocked 被拦截"||"")}) · 未创建订单</div></div>`;
+        const reason = esc(pr.reason || MPLang.T("blocked","被拦截"));
+        det += `<div class="kv"><div class="k" data-en="Payment" data-zh="支付">Payment 支付</div><div class="v">${MPLang.T("No order created ("+reason+")", "未创建订单（"+reason+"）")}</div></div>`;
       }else{
         det += `<div class="kv"><div class="k" data-en="Order" data-zh="订单">Order 订单</div><div class="v">${esc(pr.order_id)}（${esc(pr.status)}）</div></div>`;
-        if(pr.approval_url) det += `<div class="kv"><div class="k" data-en="Go to PayPal" data-zh="去付款">Go to PayPal 去付款</div><div class="v"><a class="link" target="_blank" href="${esc(pr.approval_url)}">Open the PayPal checkout 打开 PayPal 付款页</a></div></div>`;
+        if(pr.approval_url) det += `<div class="kv"><div class="k" data-en="Go to PayPal" data-zh="去付款">Go to PayPal 去付款</div><div class="v"><a class="link" target="_blank" href="${esc(pr.approval_url)}" data-en="Open the PayPal checkout" data-zh="打开 PayPal 付款页">Open the PayPal checkout 打开 PayPal 付款页</a></div></div>`;
       }
     }
     const m = d.mandate;
@@ -187,8 +188,8 @@ async function tryPurchase(){
     }
     document.getElementById("payDetail").innerHTML = det;
     document.getElementById("pOut").style.display="block";
-    msg.className="msg ok"; msg.textContent="✓ Done — see the AI insight and explanation below · 处理完成";
-  }catch(e){ msg.className="msg err"; msg.textContent="Request failed: "+e+" · 请求失败"; }
+    msg.className="msg ok"; msg.textContent=MPLang.T("✓ Done — see the AI insight and explanation below","✓ 处理完成 —— 请看下面的 AI 洞察与决策解释");
+  }catch(e){ msg.className="msg err"; msg.textContent=MPLang.T("Request failed: "+e,"请求失败："+e); }
 }
 </script>
 </body>
