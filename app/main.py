@@ -81,7 +81,12 @@ EXEMPT_PATHS = frozenset({
 })
 
 # 页面路由 —— 访问时下发会话 cookie
-SESSION_ISSUING_PATHS = frozenset({"/", "/constraints", "/budget", "/approvals", "/audit"})
+# ⚠️ /paypal/return 必须在列：它是 PayPal 批准后的回跳页，页面内要 POST
+# /api/mandates/confirm 做捕获。买家若在无 cookie 的浏览器/隐私窗口里走完
+# 支付，拿不到会话就会 401 —— 回跳页自己签发一次，链路才闭环。
+SESSION_ISSUING_PATHS = frozenset(
+    {"/", "/constraints", "/budget", "/approvals", "/audit", "/paypal/return"}
+)
 
 
 @app.middleware("http")
@@ -177,6 +182,103 @@ def approvals_page():
     """采购审批台：采购请求列表 + 审批弹窗。"""
     html = (STATIC_DIR / "approvals.html").read_text(encoding="utf-8")
     return html
+
+
+# ──────────────────────────────────────────────────────
+# 1b. PayPal 回跳页（买家人工批准后回到本站）
+# ──────────────────────────────────────────────────────
+# 订单创建时显式传了 return_url=/paypal/return、cancel_url=/paypal/cancel
+# （见 agent/paypal_tools.py::_public_base 的注释：Toolkit 默认值是
+#  example.com 占位域，不传就会把买家甩到一个「本域名仅用于文档示例」的假页面）。
+#
+# PayPal 回跳时会自动在 query 上拼 `?token=<order_id>&PayerID=<payer_id>`，
+# 所以这里的 `token` 就是订单 id —— 直接拿去复用已有的
+# /api/mandates/confirm 做捕获，不新增任何后端逻辑。
+# 页面内联、不依赖 static/ 文件：这是支付链路最后一跳，少一个文件少一处失败点。
+_PAYPAL_RETURN_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MandatePay · Payment result 支付结果</title>
+<style>
+ body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;max-width:680px;margin:0 auto;
+      padding:56px 24px;color:#1a2433;line-height:1.6}
+ h1{font-size:22px;margin:0 0 6px}
+ .sub{color:#5b6779;font-size:14px;margin:0 0 24px}
+ .card{border:1px solid #e3e8ef;border-radius:10px;padding:18px 20px;background:#fafbfd}
+ .kv{display:flex;gap:12px;font-size:14px;padding:6px 0;border-bottom:1px dashed #e3e8ef}
+ .kv:last-child{border-bottom:0}
+ .k{color:#5b6779;min-width:104px}
+ .v{font-family:ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
+ .ok{color:#137333;font-weight:600}
+ .bad{color:#b3261e;font-weight:600}
+ nav{margin-top:24px;font-size:14px}
+ nav a{color:#0070ba;margin-right:16px;text-decoration:none}
+</style></head><body>
+<h1 id="h">Capturing your payment… · 正在捕获支付</h1>
+<p class="sub">PayPal 已批准，正在由 MandatePay 完成捕获（capture）。请稍候。</p>
+<div class="card">
+  <div class="kv"><div class="k">order_id</div><div class="v" id="oid">—</div></div>
+  <div class="kv"><div class="k">PayerID</div><div class="v" id="pid">—</div></div>
+  <div class="kv"><div class="k">status</div><div class="v" id="st">—</div></div>
+  <div class="kv"><div class="k">capture_id</div><div class="v" id="cap">—</div></div>
+</div>
+<nav><a href="/audit">· Audit 审计日志</a><a href="/budget">· Budget 预算仪表盘</a><a href="/approvals">· Approvals 审批台</a></nav>
+<script>
+const q = new URLSearchParams(location.search);
+const oid = q.get("token") || "";
+document.getElementById("oid").textContent = oid || "(missing token)";
+document.getElementById("pid").textContent = q.get("PayerID") || "—";
+async function run(){
+  if(!oid){ document.getElementById("h").textContent = "缺少 token · Missing order id";
+            document.getElementById("st").textContent = "no token in return url"; return; }
+  try{
+    const r = await fetch("/api/mandates/confirm", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({order_id: oid})
+    });
+    const d = await r.json();
+    if(!r.ok){ throw new Error(d.detail || ("HTTP " + r.status)); }
+    document.getElementById("st").textContent = d.status || "—";
+    document.getElementById("cap").textContent = d.capture_id || "—";
+    const ok = d.status === "COMPLETED";
+    document.getElementById("h").innerHTML = ok
+      ? '<span class="ok">Payment COMPLETED · 支付已完成</span>'
+      : '<span class="bad">Not completed · 未完成</span>';
+  }catch(e){
+    document.getElementById("h").innerHTML = '<span class="bad">Capture failed · 捕获失败</span>';
+    document.getElementById("st").textContent = String(e.message || e);
+  }
+}
+run();
+</script></body></html>"""
+
+_PAYPAL_CANCEL_HTML = """<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MandatePay · Payment cancelled 支付已取消</title>
+<style>
+ body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;max-width:680px;margin:0 auto;
+      padding:56px 24px;color:#1a2433;line-height:1.6}
+ h1{font-size:22px;margin:0 0 6px}
+ p{color:#5b6779;font-size:14px}
+ nav{margin-top:24px;font-size:14px}
+ nav a{color:#0070ba;margin-right:16px;text-decoration:none}
+</style></head><body>
+<h1>Payment cancelled · 支付已取消</h1>
+<p>你在 PayPal 上取消了这次付款，<b>没有扣款</b>。这笔采购的 Mandate 会保持待处理状态，
+可以回到审批台重新发起。 · No money was moved; the mandate stays pending.</p>
+<nav><a href="/approvals">· 回到审批台 Approvals</a><a href="/audit">· Audit 审计日志</a></nav>
+</body></html>"""
+
+
+@app.get("/paypal/return", response_class=HTMLResponse)
+def paypal_return():
+    """买家人工批准后 PayPal 的回跳页：自动捕获并显示结果（?token= 即 order_id）。"""
+    return _PAYPAL_RETURN_HTML
+
+
+@app.get("/paypal/cancel", response_class=HTMLResponse)
+def paypal_cancel():
+    """买家在 PayPal 侧取消付款后的回跳页（不扣款，只做提示）。"""
+    return _PAYPAL_CANCEL_HTML
 
 
 @app.post("/api/create-order")

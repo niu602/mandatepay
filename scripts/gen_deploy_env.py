@@ -65,6 +65,11 @@ FIXED = {
     "LLM_MODEL": "glm-4.7-flash",
     "LLM_THINKING": "disabled",
     "PYTHON_VERSION": "3.11.9",
+    # PayPal 批准后的回跳地址前缀（线上必须是公网域名）。
+    # 不设也能跑，但会退回 http://127.0.0.1:8888 —— 买家在 PayPal 付完款
+    # 会被 302 到自己的 localhost，等于回不到站点。
+    # 注意：这一项**不能**从 .env 取（.env 里是本机地址，照搬就废了）。
+    "PUBLIC_BASE_URL": "https://mandatepay-zisen-dph6eucmf4gjckct.eastasia-01.azurewebsites.net",
     # AG Studio 授权 key —— **默认空**（trial 模式）。
     # 空值是安全的：前端会跳过 setLicenseKey，行为与没配这个变量完全一样。
     # 买到 key 后填进 .env 再重新生成 deploy.env 即可（不必手改本文件）。

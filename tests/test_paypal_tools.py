@@ -130,3 +130,48 @@ def test_create_order_extracts_approval_url(fake_tool):
     res = paypal_tools.create_order("X", 5.0)
     assert res["order_id"] == "ORDER-3"
     assert res["approval_url"] == "https://www.sandbox.paypal.com/checkoutnow?token=ORDER-3"
+
+
+# ------------------------------------------------- return_url / cancel_url
+
+def test_create_order_sends_our_return_url_not_toolkit_placeholder(fake_tool, monkeypatch):
+    """批准后必须回跳**本站**，不能落到 Toolkit 的 example.com 占位域。
+
+    真实踩过的坑：`paypal_agent_toolkit/shared/orders/parameters.py` 里
+    `return_url` 的默认值被写死成 `https://example.com/returnUrl`
+    （且 validate_default=True），我们不传就用那个值 —— 买家付完款被 302 到
+    IANA 的文档示例域名，页面上只有「本域名仅用于文档示例」的声明。
+    """
+    tool = fake_tool(json.dumps({"id": "ORDER-4", "status": "PAYER_ACTION_REQUIRED", "links": []}))
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://demo.example.org/")  # 末尾斜杠要吃掉
+
+    paypal_tools.create_order("X", 5.0)
+    payload = tool.calls[0]
+    assert payload["return_url"] == "https://demo.example.org/paypal/return"
+    assert payload["cancel_url"] == "https://demo.example.org/paypal/cancel"
+    assert "example.com/returnUrl" not in payload["return_url"]
+
+
+def test_create_order_falls_back_to_localhost_without_public_base(fake_tool, monkeypatch):
+    """没配 PUBLIC_BASE_URL、也不在任何托管平台上时，退回本机地址。"""
+    tool = fake_tool(json.dumps({"id": "ORDER-5", "status": "PAYER_ACTION_REQUIRED", "links": []}))
+    for var in ("PUBLIC_BASE_URL", "WEBSITE_HOSTNAME", "RENDER_EXTERNAL_URL"):
+        monkeypatch.delenv(var, raising=False)
+
+    paypal_tools.create_order("X", 5.0)
+    assert tool.calls[0]["return_url"] == "http://127.0.0.1:8888/paypal/return"
+
+
+def test_create_order_uses_azure_injected_hostname(fake_tool, monkeypatch):
+    """忘配 PUBLIC_BASE_URL 时，Azure 自动注入的 WEBSITE_HOSTNAME 兜住。
+
+    这条测试锁的是「部署后没配环境变量就把买家甩到 127.0.0.1」这个更隐蔽的坑：
+    Azure App Service 会注入 WEBSITE_HOSTNAME，直接拿来拼 https 即可。
+    """
+    tool = fake_tool(json.dumps({"id": "ORDER-6", "status": "PAYER_ACTION_REQUIRED", "links": []}))
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setenv("WEBSITE_HOSTNAME", "mandatepay-zisen.azurewebsites.net")
+
+    paypal_tools.create_order("X", 5.0)
+    assert tool.calls[0]["return_url"] == "https://mandatepay-zisen.azurewebsites.net/paypal/return"
+    assert tool.calls[0]["cancel_url"] == "https://mandatepay-zisen.azurewebsites.net/paypal/cancel"

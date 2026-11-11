@@ -114,9 +114,17 @@ def test_static_files_not_authed():
 # 2. DoD 第 2、3 条：页面能正常用
 # ──────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("path", ["/", "/constraints", "/budget", "/approvals", "/audit"])
+@pytest.mark.parametrize(
+    "path",
+    ["/", "/constraints", "/budget", "/approvals", "/audit", "/paypal/return"],
+)
 def test_pages_issue_session_cookie(path):
-    """五个页面路由访问时下发会话 cookie。"""
+    """页面路由访问时下发会话 cookie。
+
+    `/paypal/return` 在列是硬性要求：它是 PayPal 批准后的回跳页，
+    页面内要 POST /api/mandates/confirm 做捕获 —— 买家若在无 cookie 的
+    浏览器里走完支付，没有这一步签发就会 401，捕获链路断在这里。
+    """
     c = _fresh_client()
     r = c.get(path, headers={"user-agent": UA})
     assert r.status_code == 200
@@ -127,7 +135,10 @@ def test_pages_issue_session_cookie(path):
     assert "path=/" in raw.lower(), "cookie 的 Path 应为 /"
 
 
-@pytest.mark.parametrize("path", ["/", "/constraints", "/budget", "/approvals", "/audit"])
+@pytest.mark.parametrize(
+    "path",
+    ["/", "/constraints", "/budget", "/approvals", "/audit", "/paypal/return", "/paypal/cancel"],
+)
 def test_pages_are_not_authed(path):
     """页面路由本身不鉴权 —— 否则评委打不开页面。"""
     c = _fresh_client()

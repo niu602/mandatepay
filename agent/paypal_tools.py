@@ -40,6 +40,48 @@ def _get_tool(name: str):
     raise RuntimeError(f"PayPal Toolkit 未提供工具: {name}")
 
 
+def _public_base() -> str:
+    """站点对外可访问的根地址（PayPal 批准后回跳用）。
+
+    ⚠️ 为什么必须显式传，不能靠 Toolkit 默认值（踩过的坑，记在这里）：
+    `paypal_agent_toolkit/shared/orders/parameters.py` 里
+    `CreateOrderParameters` 的 `return_url` / `cancel_url` 默认值被**写死**成
+    `https://example.com/returnUrl` / `https://example.com/cancelUrl`，且
+    `model_config = ConfigDict(validate_default=True)` —— 我们不传，Pydantic
+    就会把这个占位值填进去，`payload_util.parse_order_details` 再写进
+    `payment_source.paypal.experience_context`。
+
+    结果：买家在 PayPal 点「完成购买」后被 302 到 example.com，
+    而那是一个 IANA 保留的**文档示例域名**，页面上只有一段
+    「该域名仅用于文档示例，并非一项服务」的多语声明 —— 支付其实已经成功，
+    但用户看到的是个假页面，退出时也看不到本站的结果页。
+
+    本地首页（JS SDK 弹窗 + onApprove 直接 capture）不会暴露这个问题，
+    因为浏览器从没被 302 过；只有整页 checkout（approval_url）才会踩到。
+
+    取值顺序（先显式、再平台自动注入、最后本机兜底）：
+      1. `PUBLIC_BASE_URL`            —— 显式配置，最可靠
+      2. `WEBSITE_HOSTNAME`          —— Azure App Service 自动注入，无需手工配
+      3. `RENDER_EXTERNAL_URL`       —— Render 自动注入（历史备用平台）
+      4. `http://127.0.0.1:8888`     —— 本地开发兜底
+    这样**忘配环境变量也不会把买家甩到 example.com**：部署到 Azure 上会自动
+    解析成 https://<app>.azurewebsites.net。
+    """
+    explicit = (os.getenv("PUBLIC_BASE_URL") or "").strip()
+    if explicit:
+        return explicit.rstrip("/")
+
+    host = (os.getenv("WEBSITE_HOSTNAME") or "").strip()  # Azure App Service
+    if host:
+        return f"https://{host}".rstrip("/")
+
+    render_url = (os.getenv("RENDER_EXTERNAL_URL") or "").strip()
+    if render_url:
+        return render_url.rstrip("/")
+
+    return "http://127.0.0.1:8888"
+
+
 def create_order(item_name: str, amount_usd: float, quantity: int = 1) -> dict:
     """创建一笔 PayPal 订单，返回包含 id / status / approval_url 的字典。
 
@@ -60,6 +102,7 @@ def create_order(item_name: str, amount_usd: float, quantity: int = 1) -> dict:
     tool = _get_tool("create_order")
     unit = round(amount_usd / quantity, 2)
     computed_total = round(unit * quantity, 2)
+    base = _public_base()
     raw = tool.invoke(
         {
             "currency_code": "USD",
@@ -71,6 +114,9 @@ def create_order(item_name: str, amount_usd: float, quantity: int = 1) -> dict:
                     "quantity": quantity,
                 }
             ],
+            # 必须显式传：Toolkit 的默认值是 example.com 占位域（见 _public_base 注释）
+            "return_url": f"{base}/paypal/return",
+            "cancel_url": f"{base}/paypal/cancel",
         }
     )
     # toolkit 返回的是 JSON 字符串
