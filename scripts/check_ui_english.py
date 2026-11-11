@@ -79,6 +79,13 @@ def visible_chunks(html: str) -> list[tuple[str, str]]:
     for m in re.finditer(r"""[`"']([^`"'<>]*)[`"']""", js):
         s = m.group(1).strip()
         if s and CJK.search(s):
+            # 跳过 HTML 属性值（如 data-zh="月度预算"）：
+            # 属性值不是可见文本，i18n 切换用它们存中文，不应被 W-10 判定。
+            # 判定方式：字符串前面（去掉空白后）以 = 结尾。
+            start = m.start()
+            prefix = js[max(0, start - 12):start].rstrip()
+            if prefix.endswith("="):
+                continue
             chunks.append(("js", s))
 
     # ── 模板字符串里的 HTML 文本节点（script 块内）──

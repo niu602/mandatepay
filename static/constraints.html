@@ -73,22 +73,22 @@
   </style>
 </head>
 <body>
-    <nav class="top"><a href="/">· Pay 支付测试</a><a href="/budget">· Budget 预算仪表盘</a><a href="/approvals">· Approvals 审批台</a><a href="/audit">· Audit 审计日志</a><a href="https://github.com/niu602/mandatepay" target="_blank" rel="noopener">· Source 源码</a></nav>
-  <h1>MandatePay · Constraints 约束设定</h1>
-  <div class="sub">Tell the agent how to spend money in plain English — it parses that into structured rules, then explains every decision · 用自然语言告诉 Agent「怎么花钱」，它会解析成结构化规则，并在每次决策时给出洞察与解释</div>
+    <nav class="top"><a href="/" data-en="Pay" data-zh="支付测试">· Pay 支付测试</a><a href="/budget" data-en="Budget" data-zh="预算仪表盘">· Budget 预算仪表盘</a><a href="/approvals" data-en="Approvals" data-zh="审批台">· Approvals 审批台</a><a href="/audit" data-en="Audit" data-zh="审计日志">· Audit 审计日志</a><a href="https://github.com/niu602/mandatepay" target="_blank" rel="noopener" data-en="Source" data-zh="源码">· Source 源码</a></nav>
+  <h1 data-en="MandatePay · Constraints" data-zh="MandatePay · 约束设定">MandatePay · Constraints 约束设定</h1>
+  <div class="sub" data-en="Tell the agent how to spend money in plain English — it parses that into structured rules, then explains every decision" data-zh="用自然语言告诉 Agent「怎么花钱」，它会解析成结构化规则，并在每次决策时给出洞察与解释">Tell the agent how to spend money in plain English — it parses that into structured rules, then explains every decision · 用自然语言告诉 Agent「怎么花钱」，它会解析成结构化规则，并在每次决策时给出洞察与解释</div>
 
   <div class="note">
-    <b>Two places the AI takes part · 两处 AI 参与：</b>
+    <b data-en="Two places the AI takes part" data-zh="两处 AI 参与">Two places the AI takes part · 两处 AI 参与：</b>
     ① Type one sentence below to set your constraints — the AI parses it into structured rules.<br>
     ② In the <b>Insight / Explanation</b> panel, try a purchase — the AI first works out your budget position, then gives an <b>insight</b>, then an <b>actionable explanation</b> for the verdict.
   </div>
 
   <!-- ① 约束设定 -->
   <div class="card">
-    <h2>① Set constraints in plain English · 用自然语言设定约束</h2>
-    <div class="hint">e.g. "SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma" · 例：「每月 SaaS 预算 200 美元，单笔超过 50 要先问我，只允许买 Notion 和 Figma」</div>
+    <h2 data-en="① Set constraints in plain English" data-zh="① 用自然语言设定约束">① Set constraints in plain English · 用自然语言设定约束</h2>
+    <div class="hint" data-en='e.g. "SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma"' data-zh="例：「每月 SaaS 预算 200 美元，单笔超过 50 要先问我，只允许买 Notion 和 Figma」">e.g. "SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma" · 例：「每月 SaaS 预算 200 美元，单笔超过 50 要先问我，只允许买 Notion 和 Figma」</div>
     <textarea id="cText" rows="2" placeholder="Describe your spending constraints in one sentence… · 用一句话描述你的花钱约束…">SaaS budget 200 dollars a month, anything over 50 ask me first, only Notion and Figma</textarea>
-    <div class="row"><button class="btn" onclick="setConstraint()">Parse &amp; set constraints · 解析并设定约束</button></div>
+    <div class="row"><button class="btn" onclick="setConstraint()" data-en="Parse & set constraints" data-zh="解析并设定约束">Parse &amp; set constraints · 解析并设定约束</button></div>
     <div id="cMsg" class="msg"></div>
     <div id="rules" style="display:none">
       <div class="rules" id="ruleCards"></div>
@@ -97,18 +97,21 @@
 
   <!-- ② 消费洞察 / 决策解释 -->
   <div class="card">
-    <h2>② Insight / Explanation — try a purchase · 消费洞察 / 决策解释（试一笔采购）</h2>
-    <div class="hint">e.g. "Buy Notion Pro for 10 dollars" or "Buy Slack Pro for 15 dollars" (blocked by the allowlist, with an explanation) · 例：「帮我买 Notion Pro，10 美元」或「买 Slack Pro，15 美元」（会被白名单拦截并给出解释）</div>
+    <h2 data-en="② Insight / Explanation — try a purchase" data-zh="② 消费洞察 / 决策解释（试一笔采购）">② Insight / Explanation — try a purchase · 消费洞察 / 决策解释（试一笔采购）</h2>
+    <div class="hint" data-en='e.g. "Buy Notion Pro for 10 dollars" or "Buy Slack Pro for 15 dollars" (blocked by the allowlist, with an explanation)' data-zh="例：「帮我买 Notion Pro，10 美元」或「买 Slack Pro，15 美元」（会被白名单拦截并给出解释）">e.g. "Buy Notion Pro for 10 dollars" or "Buy Slack Pro for 15 dollars" (blocked by the allowlist, with an explanation) · 例：「帮我买 Notion Pro，10 美元」或「买 Slack Pro，15 美元」（会被白名单拦截并给出解释）</div>
     <input type="text" id="pText" placeholder="Describe a purchase, e.g. Buy Notion Pro for 10 dollars · 描述一笔采购，例：帮我买 Notion Pro，10 美元" value="Buy Notion Pro for 10 dollars">
-    <div class="row"><button class="btn" onclick="tryPurchase()">Let the agent handle it · 让 Agent 处理</button></div>
+    <div class="row"><button class="btn" onclick="tryPurchase()" data-en="Let the agent handle it" data-zh="让 Agent 处理">Let the agent handle it · 让 Agent 处理</button></div>
     <div id="pMsg" class="msg"></div>
     <div id="pOut" style="display:none">
       <div style="margin-top:12px"><span id="pBadge"></span></div>
-      <div class="ai" id="insightBox"><span class="tag">💡 Insight 消费洞察</span><div id="insightText"></div></div>
-      <div class="ai" id="explainBox"><span class="tag">🧭 Explanation 决策解释</span><div id="explainText"></div></div>
+      <div class="ai" id="insightBox"><span class="tag" data-en="Insight" data-zh="消费洞察">💡 Insight 消费洞察</span><div id="insightText"></div></div>
+      <div class="ai" id="explainBox"><span class="tag" data-en="Explanation" data-zh="决策解释">🧭 Explanation 决策解释</span><div id="explainText"></div></div>
       <div id="payDetail"></div>
     </div>
   </div>
+
+  <!-- 中英切换 -->
+  <script src="/static/js/i18n.js"></script>
 
 <script>
 function cls(d){
@@ -136,15 +139,15 @@ async function setConstraint(){
     const c = d.constraint;
     msg.className="msg ok"; msg.textContent="✓ Constraints saved — here are the structured rules the AI parsed · 约束已保存";
     const cards = [
-      ["Monthly budget 月度预算", "$"+(c.monthly_budget_usd??0)],
-      ["Per-transaction threshold 单笔阈值", "$"+(c.single_tx_threshold_usd??0)],
-      ["Daily cumulative threshold 日累计阈值", c.daily_threshold_usd?("$"+c.daily_threshold_usd):"none 不限"],
+      ["Monthly budget", "月度预算", "$"+(c.monthly_budget_usd??0)],
+      ["Per-transaction threshold", "单笔阈值", "$"+(c.single_tx_threshold_usd??0)],
+      ["Daily cumulative threshold", "日累计阈值", c.daily_threshold_usd?("$"+c.daily_threshold_usd):"none 不限"],
     ];
-    let html = cards.map(([k,v])=>`<div class="rule"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join("");
-    html += `<div class="rule"><div class="k">Vendor allowlist 供应商白名单</div><div class="chips">${
-      (c.vendor_whitelist&&c.vendor_whitelist.length)?c.vendor_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty">none 不限</span>`}</div></div>`;
-    html += `<div class="rule"><div class="k">Category allowlist 品类白名单</div><div class="chips">${
-      (c.category_whitelist&&c.category_whitelist.length)?c.category_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty">none 不限</span>`}</div></div>`;
+    let html = cards.map(([en,zh,v])=>`<div class="rule"><div class="k" data-en="${en}" data-zh="${zh}">${en} ${zh}</div><div class="v">${esc(v)}</div></div>`).join("");
+    html += `<div class="rule"><div class="k" data-en="Vendor allowlist" data-zh="供应商白名单">Vendor allowlist 供应商白名单</div><div class="chips">${
+      (c.vendor_whitelist&&c.vendor_whitelist.length)?c.vendor_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty" data-en="none" data-zh="不限">none 不限</span>`}</div></div>`;
+    html += `<div class="rule"><div class="k" data-en="Category allowlist" data-zh="品类白名单">Category allowlist 品类白名单</div><div class="chips">${
+      (c.category_whitelist&&c.category_whitelist.length)?c.category_whitelist.map(x=>`<span class="chip">${esc(x)}</span>`).join(""):`<span class="chip empty" data-en="none" data-zh="不限">none 不限</span>`}</div></div>`;
     document.getElementById("ruleCards").innerHTML = html;
     document.getElementById("rules").style.display="block";
   }catch(e){ msg.className="msg err"; msg.textContent="Request failed: "+e+" · 请求失败"; }
@@ -166,21 +169,21 @@ async function tryPurchase(){
 
     let det = "";
     const spend = d.spend||{};
-    det += `<div class="kv"><div class="k">Engine reason 引擎原始原因</div><div class="v">${esc(d.reason||d.error||"—")}</div></div>`;
-    det += `<div class="kv"><div class="k">Spent this month 本月已花费</div><div class="v">$${Number(spend.monthly_usd||0).toFixed(2)}</div></div>`;
+    det += `<div class="kv"><div class="k" data-en="Engine reason" data-zh="引擎原始原因">Engine reason 引擎原始原因</div><div class="v">${esc(d.reason||d.error||"—")}</div></div>`;
+    det += `<div class="kv"><div class="k" data-en="Spent this month" data-zh="本月已花费">Spent this month 本月已花费</div><div class="v">$${Number(spend.monthly_usd||0).toFixed(2)}</div></div>`;
     const pr = d.payment_result;
     if(pr){
       if(pr.status==="SKIPPED"){
-        det += `<div class="kv"><div class="k">Payment 支付</div><div class="v">No order created (${esc(pr.reason||"blocked 被拦截"||"")}) · 未创建订单</div></div>`;
+        det += `<div class="kv"><div class="k" data-en="Payment" data-zh="支付">Payment 支付</div><div class="v">No order created (${esc(pr.reason||"blocked 被拦截"||"")}) · 未创建订单</div></div>`;
       }else{
-        det += `<div class="kv"><div class="k">Order 订单</div><div class="v">${esc(pr.order_id)}（${esc(pr.status)}）</div></div>`;
-        if(pr.approval_url) det += `<div class="kv"><div class="k">Go to PayPal 去付款</div><div class="v"><a class="link" target="_blank" href="${esc(pr.approval_url)}">Open the PayPal checkout 打开 PayPal 付款页</a></div></div>`;
+        det += `<div class="kv"><div class="k" data-en="Order" data-zh="订单">Order 订单</div><div class="v">${esc(pr.order_id)}（${esc(pr.status)}）</div></div>`;
+        if(pr.approval_url) det += `<div class="kv"><div class="k" data-en="Go to PayPal" data-zh="去付款">Go to PayPal 去付款</div><div class="v"><a class="link" target="_blank" href="${esc(pr.approval_url)}">Open the PayPal checkout 打开 PayPal 付款页</a></div></div>`;
       }
     }
     const m = d.mandate;
     if(m){
       const layers = (m.layers||[]).map(L=>`<span class="chip">${esc(L.layer)}: ${esc(L.status)}</span>`).join("");
-      det += `<div class="kv"><div class="k">Three-layer Mandate 三层 Mandate</div><div class="v"><div class="chips">${layers}</div></div></div>`;
+      det += `<div class="kv"><div class="k" data-en="Three-layer Mandate" data-zh="三层 Mandate">Three-layer Mandate 三层 Mandate</div><div class="v"><div class="chips">${layers}</div></div></div>`;
     }
     document.getElementById("payDetail").innerHTML = det;
     document.getElementById("pOut").style.display="block";

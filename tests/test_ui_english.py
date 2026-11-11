@@ -260,8 +260,7 @@ def test_detects_pure_chinese_inside_template_string():
 
     html = _read("approvals.html")
     # 模拟 W-10 漏改的状态：详情面板的标签只剩中文
-    broken = html.replace('<span class="k">Vendor 供应商</span>',
-                          '<span class="k">供应商</span>')
+    broken = html.replace('>Vendor 供应商<', '>供应商<')
     chunks = visible_chunks(broken)
     hits = [txt for _, txt in chunks if txt == "供应商"]
     assert hits, "模板字符串里的纯中文标签「供应商」应被检出"

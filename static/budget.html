@@ -60,19 +60,19 @@
 </head>
 <body>
   <nav class="top">
-    <a href="/">· Pay 支付测试</a>
-    <a href="/constraints">· Constraints 约束设定</a>
-    <a href="/approvals">· Approvals 审批台</a>
-    <a href="/audit">· Audit 审计</a>
-    <a href="/budget">· Budget 预算</a>
-    <a href="https://github.com/niu602/mandatepay" target="_blank" rel="noopener">· Source 源码</a>
+    <a href="/" data-en="Pay" data-zh="支付测试">· Pay 支付测试</a>
+    <a href="/constraints" data-en="Constraints" data-zh="约束设定">· Constraints 约束设定</a>
+    <a href="/approvals" data-en="Approvals" data-zh="审批台">· Approvals 审批台</a>
+    <a href="/audit" data-en="Audit" data-zh="审计日志">· Audit 审计</a>
+    <a href="/budget" data-en="Budget" data-zh="预算">· Budget 预算</a>
+    <a href="https://github.com/niu602/mandatepay" target="_blank" rel="noopener" data-en="Source" data-zh="源码">· Source 源码</a>
   </nav>
 
-  <h1>MandatePay · <span style="font-size:15px;color:#5a6b82;font-weight:400">Budget Dashboard 预算仪表盘</span></h1>
-  <div class="sub">Every purchase the agent makes stays inside the budget — how much is left, whether it will overshoot, answered with data · Agent 每一笔花钱都在预算之内</div>
+  <h1 data-en="MandatePay · Budget Dashboard" data-zh="MandatePay · 预算仪表盘">MandatePay · <span style="font-size:15px;color:#5a6b82;font-weight:400">Budget Dashboard 预算仪表盘</span></h1>
+  <div class="sub" data-en="Every purchase the agent makes stays inside the budget — how much is left, whether it will overshoot, answered with data" data-zh="Agent 每一笔花钱都在预算之内">Every purchase the agent makes stays inside the budget — how much is left, whether it will overshoot, answered with data · Agent 每一笔花钱都在预算之内</div>
 
   <div class="note">
-    <b>Powered by AG Studio · 本页由 AG Studio 渲染</b>
+    <b data-en="Powered by AG Studio" data-zh="本页由 AG Studio 渲染">Powered by AG Studio · 本页由 AG Studio 渲染</b>
     <span style="color:#8a94a6">Rendered by AG Studio from the existing <code>/api/budget/summary</code> endpoint — the backend is unchanged.
     If the Studio runtime cannot load, the page falls back to the classic hand-built view automatically; you can also switch manually.
     · 数据源是本服务已有的 <code>/api/budget/summary</code>（未改动后端）；若 AG Studio 未能加载，页面会自动回退到原版手写视图，也可手动切换。</span>
@@ -82,10 +82,10 @@
 
   <!-- ══ AG Studio 视图 ══ -->
   <div class="card" id="agCard">
-    <h2><span style="font-weight:400;color:#5a6b82">Budget Overview 预算总览</span>
+    <h2><span style="font-weight:400;color:#5a6b82" data-en="Budget Overview" data-zh="预算总览">Budget Overview 预算总览</span>
       <span class="sp"></span>
       <span class="tag-ag">AG Studio</span>
-      <button class="btn gray" onclick="toggleView()">Switch to the classic view / 切换到原版视图</button>
+      <button class="btn gray" onclick="toggleView()" data-en="Switch to the classic view" data-zh="切换到原版视图">Switch to the classic view / 切换到原版视图</button>
     </h2>
     <div id="studio"></div>
     <div id="agEmpty" hidden style="font-size:13px;color:#8a94a6;margin-top:8px">
@@ -98,28 +98,29 @@
   <!-- ══ 原版视图（自动回退 / 手动切换）══ -->
   <div id="classicCard" hidden>
     <div class="card">
-      <h2><span style="font-weight:400;color:#5a6b82">Budget Overview 预算总览</span>
+      <h2><span style="font-weight:400;color:#5a6b82" data-en="Budget Overview" data-zh="预算总览">Budget Overview 预算总览</span>
         <span class="sp"></span>
         <span class="tag-ag" style="background:#f0f2f5;color:#5a6b82">Classic 原版</span>
-        <button class="btn gray" onclick="toggleView()">Back to AG Studio / 切回 AG Studio</button>
+        <button class="btn gray" onclick="toggleView()" data-en="Back to AG Studio" data-zh="切回 AG Studio">Back to AG Studio / 切回 AG Studio</button>
       </h2>
       <div class="kpis" id="kpis"></div>
       <div class="bar" id="bar"><i id="barUsed" style="width:0%"></i><div class="proj" id="barProj" style="left:0%;width:0%"></div></div>
       <div class="legend">
-        <span><i style="background:#0070ba"></i>Committed spend 已承诺支出</span>
-        <span><i style="background:rgba(255,193,7,.6);border:1px dashed #b36b00"></i>Projected 月末预测</span>
+        <span><i style="background:#0070ba"></i><span data-en="Committed spend" data-zh="已承诺支出">Committed spend 已承诺支出</span></span>
+        <span><i style="background:rgba(255,193,7,.6);border:1px dashed #b36b00"></i><span data-en="Projected month-end" data-zh="月末预测">Projected 月末预测</span></span>
       </div>
     </div>
     <div class="card">
-      <h2><span style="font-weight:400;color:#5a6b82">Spend by Vendor 按供应商分布</span></h2>
-      <div id="vendors"><div class="empty">Loading… 加载中……</div></div>
+      <h2><span style="font-weight:400;color:#5a6b82" data-en="Spend by Vendor" data-zh="按供应商分布">Spend by Vendor 按供应商分布</span></h2>
+      <div id="vendors"><div class="empty" data-en="Loading…" data-zh="加载中……">Loading… 加载中……</div></div>
     </div>
     <div class="card">
-      <h2><span style="font-weight:400;color:#5a6b82">Thresholds 约束阈值</span></h2>
+      <h2><span style="font-weight:400;color:#5a6b82" data-en="Thresholds" data-zh="约束阈值">Thresholds 约束阈值</span></h2>
       <div id="thresholds"></div>
     </div>
   </div>
 
+<script src="/static/js/i18n.js"></script>
 <script>
 /* ── 视图切换（AG Studio ↔ 原版）── */
 window.currentView = 'ag';
@@ -153,12 +154,12 @@ function toggleView() {
     const ratio = Math.min(1, d.used_ratio || 0), projRatio = Math.min(1, d.projected_ratio || 0);
 
     document.getElementById('kpis').innerHTML = `
-      <div class="kpi"><div class="k">月度预算 Monthly budget</div><div class="v">${money(budget)}</div><div class="d">滚动预算上限 Rolling cap</div></div>
-      <div class="kpi ${d.over_budget ? 'warn' : ''}"><div class="k">Committed 已承诺支出</div><div class="v">${money(spent)}</div><div class="d">Counted on order 下单即计入</div></div>
-      <div class="kpi"><div class="k">其中已到账 Completed</div><div class="v">${money(d.monthly_completed_usd)}</div><div class="d">待支付 ${money(d.monthly_committed_usd)} pending</div></div>
-      <div class="kpi ${remain < 0 ? 'warn' : 'good'}"><div class="k">剩余额度 Remaining</div><div class="v">${money(remain)}</div><div class="d">${remain < 0 ? '已超预算 Over budget' : '可继续授权 Available'}</div></div>
-      <div class="kpi ${d.over_budget ? 'warn' : ''}"><div class="k">Projected month-end 月末预测</div><div class="v">${money(proj)}</div><div class="d">Extrapolated from the day-${d.day_of_month} rate 按第 ${d.day_of_month} 天速率外推</div></div>
-      <div class="kpi"><div class="k">今日已承诺 Today</div><div class="v">${money(d.daily_spent_usd)}</div><div class="d">日累计阈值依据 Daily cap</div></div>`;
+      <div class="kpi"><div class="k" data-en="Monthly budget" data-zh="月度预算">月度预算 Monthly budget</div><div class="v">${money(budget)}</div><div class="d" data-en="Rolling cap" data-zh="滚动预算上限">滚动预算上限 Rolling cap</div></div>
+      <div class="kpi ${d.over_budget ? 'warn' : ''}"><div class="k" data-en="Committed" data-zh="已承诺支出">Committed 已承诺支出</div><div class="v">${money(spent)}</div><div class="d" data-en="Counted on order" data-zh="下单即计入">下单即计入 Counted on order</div></div>
+      <div class="kpi"><div class="k" data-en="Completed" data-zh="其中已到账">其中已到账 Completed</div><div class="v">${money(d.monthly_completed_usd)}</div><div class="d" data-en="Pending" data-zh="待支付">待支付 ${money(d.monthly_committed_usd)} pending</div></div>
+      <div class="kpi ${remain < 0 ? 'warn' : 'good'}"><div class="k" data-en="Remaining" data-zh="剩余额度">剩余额度 Remaining</div><div class="v">${money(remain)}</div><div class="d" data-en="${remain < 0 ? 'Over budget' : 'Available'}" data-zh="${remain < 0 ? '\u5DF2\u8D85\u9884\u7B97' : '\u53EF\u7EE7\u7EED\u6388\u6743'}">${remain < 0 ? '已超预算 Over budget' : '可继续授权 Available'}</div></div>
+      <div class="kpi ${d.over_budget ? 'warn' : ''}"><div class="k" data-en="Projected month-end" data-zh="月末预测">Projected month-end 月末预测</div><div class="v">${money(proj)}</div><div class="d" data-en="Extrapolated from the day-${d.day_of_month} rate" data-zh="按第 ${d.day_of_month} 天速率外推">按第 ${d.day_of_month} 天速率外推 Extrapolated from the day-${d.day_of_month} rate</div></div>
+      <div class="kpi"><div class="k" data-en="Today" data-zh="今日已承诺">今日已承诺 Today</div><div class="v">${money(d.daily_spent_usd)}</div><div class="d" data-en="Daily cap" data-zh="日累计阈值依据">日累计阈值依据 Daily cap</div></div>`;
 
     const bar = document.getElementById('bar');
     bar.className = 'bar' + (d.over_budget ? ' over' : '');
@@ -174,23 +175,23 @@ function toggleView() {
           <span class="vn">${esc(v.vendor)}</span>
           <span class="vb"><i style="width:${(v.amount_usd / max * 100).toFixed(1)}%"></i></span>
           <span class="va">${money(v.amount_usd)} × ${v.count}</span></div>`).join('')
-      : `<div class="empty">本月还没有已完成的支付。 / No completed payments this month yet.</div>`;
+      : `<div class="empty" data-en="No completed payments this month yet." data-zh="本月还没有已完成的支付。">本月还没有已完成的支付。 / No completed payments this month yet.</div>`;
 
     const t = d.thresholds || {};
     document.getElementById('thresholds').innerHTML = `
-      <div class="chip">单笔阈值 Single-tx ${money(t.single_tx_threshold_usd)}</div>
-      <div class="chip">日累计阈值 Daily ${t.daily_threshold_usd ? money(t.daily_threshold_usd) : '不限 none'}</div>
-      <div class="chip">供应商白名单 Vendors：${esc((t.vendor_whitelist || []).join('、') || '不限 none')}</div>
-      <div class="chip">品类白名单 Categories：${esc((t.category_whitelist || []).join('、') || '不限 none')}</div>`;
+      <div class="chip"><span data-en="Single-tx" data-zh="单笔阈值">单笔阈值 Single-tx</span> ${money(t.single_tx_threshold_usd)}</div>
+      <div class="chip"><span data-en="Daily" data-zh="日累计阈值">日累计阈值 Daily</span> ${t.daily_threshold_usd ? money(t.daily_threshold_usd) : '不限 none'}</div>
+      <div class="chip"><span data-en="Vendors" data-zh="供应商白名单">供应商白名单 Vendors</span>：${esc((t.vendor_whitelist || []).join('、') || '不限 none')}</div>
+      <div class="chip"><span data-en="Categories" data-zh="品类白名单">品类白名单 Categories</span>：${esc((t.category_whitelist || []).join('、') || '不限 none')}</div>`;
   }
 
   function renderAlert(d) {
     const budget = d.monthly_budget_usd || 0, spent = d.monthly_spent_usd || 0, proj = d.projected_month_usd || 0;
     document.getElementById('alert').innerHTML = d.over_budget
-      ? `<div class="warnbox"><b>⚠️ Budget risk 预算风险</b>　At the current rate, projected month-end spend is ${money(proj)}, which <b>exceeds</b> the ${money(budget)} monthly budget.
+      ? `<div class="warnbox"><b data-en="⚠️ Budget risk" data-zh="⚠️ 预算风险">⚠️ Budget risk 预算风险</b>　At the current rate, projected month-end spend is ${money(proj)}, which <b>exceeds</b> the ${money(budget)} monthly budget.
          Tighten the single-transaction threshold or buy in batches.
          <span style="color:#8c1d18">Projected month-end spend ${money(proj)} exceeds the ${money(budget)} budget — tighten the single-transaction threshold or buy in batches.</span></div>`
-      : `<div class="okbox">✓ Budget healthy 预算健康：committed ${money(spent)} / ${money(budget)} (of which ${money(d.monthly_completed_usd)} completed),
+      : `<div class="okbox"><b data-en="✓ Budget healthy" data-zh="✓ 预算健康">✓ Budget healthy 预算健康</b>：committed ${money(spent)} / ${money(budget)} (of which ${money(d.monthly_completed_usd)} completed),
          projected month-end ${money(proj)} stays inside the budget.
          <span style="color:#0d652d">Committed ${money(spent)} of ${money(budget)}; projected month-end ${money(proj)} stays inside the budget.</span></div>`;
   }

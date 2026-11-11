@@ -15,11 +15,14 @@
   </style>
 </head>
 <body>
-  <nav class="top"><a class="current" href="/">· Pay 支付测试</a><a href="/constraints">· Constraints 约束设定</a><a href="/budget">· Budget 预算仪表盘</a><a href="/approvals">· Approvals 审批台</a><a href="/audit">· Audit 审计日志</a><a href="https://github.com/niu602/mandatepay" target="_blank" rel="noopener">· Source 源码</a></nav>
-  <h1>MandatePay · PayPal Sandbox Checkout 沙箱支付测试</h1>
-  <p>Amount: $10.00 USD (change it in the /api/create-order request body) · 金额：$10.00 USD（可在 /api/create-order 入参中修改）</p>
+  <nav class="top"><a class="current" href="/" data-en="Pay" data-zh="支付测试">· Pay 支付测试</a><a href="/constraints" data-en="Constraints" data-zh="约束设定">· Constraints 约束设定</a><a href="/budget" data-en="Budget" data-zh="预算仪表盘">· Budget 预算仪表盘</a><a href="/approvals" data-en="Approvals" data-zh="审批台">· Approvals 审批台</a><a href="/audit" data-en="Audit" data-zh="审计日志">· Audit 审计日志</a><a href="https://github.com/niu602/mandatepay" target="_blank" rel="noopener" data-en="Source" data-zh="源码">· Source 源码</a></nav>
+  <h1 data-en="MandatePay · PayPal Sandbox Checkout" data-zh="MandatePay · 沙箱支付测试">MandatePay · PayPal Sandbox Checkout 沙箱支付测试</h1>
+  <p data-en="Amount: $10.00 USD (change it in the /api/create-order request body)" data-zh="金额：$10.00 USD（可在 /api/create-order 入参中修改）">Amount: $10.00 USD (change it in the /api/create-order request body) · 金额：$10.00 USD（可在 /api/create-order 入参中修改）</p>
   <div id="paypal-button-container"></div>
-  <div id="status">Waiting for payment… · 等待支付……</div>
+  <div id="status" data-en="Waiting for payment…" data-zh="等待支付……">Waiting for payment… · 等待支付……</div>
+
+  <!-- 中英切换：共享脚本（默认双语，可切纯英文/纯中文） -->
+  <script src="/static/js/i18n.js"></script>
 
   <!-- 官方 JS SDK：client-id 由后端从 .env 注入 -->
   <script src="https://www.paypal.com/sdk/js?client-id={{CLIENT_ID}}&currency=USD&intent=capture"></script>

@@ -75,19 +75,19 @@
   </style>
 </head>
 <body>
-    <nav class="top"><a href="/constraints">· Constraints 约束设定</a><a href="/audit">· Audit 审计日志</a><a href="/budget">· Budget 预算仪表盘</a><a href="/">· Pay 支付测试</a><a href="https://github.com/niu602/mandatepay" target="_blank" rel="noopener">· Source 源码</a></nav>
-  <h1>MandatePay · Approvals 采购审批台</h1>
-  <div class="sub">The agent orders on its own inside the authorised scope; anything over the threshold stops and waits for a human — the human keeps the final veto · Agent 在授权范围内自主下单，超过阈值的则停下来等人 —— 人拿最终否决权</div>
+    <nav class="top"><a href="/constraints" data-en="Constraints" data-zh="约束设定">· Constraints 约束设定</a><a href="/audit" data-en="Audit" data-zh="审计日志">· Audit 审计日志</a><a href="/budget" data-en="Budget" data-zh="预算仪表盘">· Budget 预算仪表盘</a><a href="/" data-en="Pay" data-zh="支付测试">· Pay 支付测试</a><a href="https://github.com/niu602/mandatepay" target="_blank" rel="noopener" data-en="Source" data-zh="源码">· Source 源码</a></nav>
+  <h1 data-en="MandatePay · Approvals" data-zh="MandatePay · 采购审批台">MandatePay · Approvals 采购审批台</h1>
+  <div class="sub" data-en="The agent orders on its own inside the authorised scope; anything over the threshold stops and waits for a human — the human keeps the final veto" data-zh="Agent 在授权范围内自主下单，超过阈值的则停下来等人 —— 人拿最终否决权">The agent orders on its own inside the authorised scope; anything over the threshold stops and waits for a human — the human keeps the final veto · Agent 在授权范围内自主下单，超过阈值的则停下来等人 —— 人拿最终否决权</div>
 
   <div class="card">
-    <h2>Purchase requests 采购请求</h2>
+    <h2 data-en="Purchase requests" data-zh="采购请求">Purchase requests 采购请求</h2>
     <div class="tabs" id="tabs">
-      <button class="tab on" data-f="pending">Needs me 待我审批</button>
-      <button class="tab" data-f="all">All requests 全部请求</button>
-      <button class="tab" data-f="COMPLETED">Completed 已完成</button>
-      <button class="tab" data-f="REJECTED">Rejected 已拒绝</button>
+      <button class="tab on" data-f="pending" data-en="Needs me" data-zh="待我审批">Needs me 待我审批</button>
+      <button class="tab" data-f="all" data-en="All requests" data-zh="全部请求">All requests 全部请求</button>
+      <button class="tab" data-f="COMPLETED" data-en="Completed" data-zh="已完成">Completed 已完成</button>
+      <button class="tab" data-f="REJECTED" data-en="Rejected" data-zh="已拒绝">Rejected 已拒绝</button>
     </div>
-    <div id="list"><div class="empty">Loading… 加载中……</div></div>
+    <div id="list"><div class="empty" data-en="Loading…" data-zh="加载中……">Loading… 加载中……</div></div>
   </div>
 
 <div id="msg"></div>
@@ -101,17 +101,18 @@
   </div>
 </div>
 
+<script src="/static/js/i18n.js"></script>
 <script>
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let filter = 'pending', current = null;
 
 async function loadList(){
   const el = document.getElementById('list');
-  el.innerHTML = '<div class="empty">Loading… 加载中……</div>';
+  el.innerHTML = '<div class="empty" data-en="Loading…" data-zh="加载中……">Loading… 加载中……</div>';
   try{
     const d = await (await fetch('/api/approvals?status='+filter)).json();
     const items = d.items||[];
-    if(!items.length){ el.innerHTML = '<div class="empty">No matching requests 没有符合条件的请求</div>'; return; }
+    if(!items.length){ el.innerHTML = '<div class="empty" data-en="No matching requests" data-zh="没有符合条件的请求">No matching requests 没有符合条件的请求</div>'; return; }
     el.innerHTML = items.map((m,i)=>{
       const pending = m.status==='PENDING_HUMAN';
       return `<div class="req">
@@ -132,7 +133,7 @@ async function loadList(){
       </div>`;
     }).join('');
     window.__ITEMS = items;
-  }catch(e){ el.innerHTML = `<div class="empty">加载失败: ${esc(e)}</div>`; }
+  }catch(e){ el.innerHTML = `<div class="empty" data-en="Load failed" data-zh="加载失败">加载失败: ${esc(e)}</div>`; }
 }
 
 function openModal(i){
@@ -143,25 +144,25 @@ function openModal(i){
       <div class="ltext">${esc(o.content||'')}</div></div>` : `<div class="layer-box l-${cls}"><div class="lname">${name}</div><div class="ltext">—</div></div>`;
   document.getElementById('mTitle').textContent = `${m.vendor||'Purchase 采购'} · $${Number(m.amount_usd||0).toFixed(2)}`;
   document.getElementById('mBody').innerHTML = `
-    <div class="note">This request exceeds the agent's single-transaction authorisation, so it <b>stops and waits for a human</b>. The agent continues only after you approve — the final authorisation always stays with the human. · 这笔请求超出 Agent 的单笔授权额度，因此停下来等人确认。你批准后 Agent 才继续，人始终握有最终授权权。</div>
-    <div class="kv"><span class="k">Vendor 供应商</span><span class="v">${esc(m.vendor||'—')}</span></div>
-    <div class="kv"><span class="k">Item 商品</span><span class="v">${esc(m.cart||'—')}</span></div>
-    <div class="kv"><span class="k">Amount 金额</span><span class="v">$${Number(m.amount_usd||0).toFixed(2)}</span></div>
-    <div class="kv"><span class="k">Engine verdict 引擎判定</span><span class="v">${esc(m.decision||'—')}</span></div>
-    <div class="kv"><span class="k">Status 状态</span><span class="v"><span class="badge b-${String(m.status||'').toLowerCase()}">${esc(m.status)}</span></span></div>
+    <div class="note"><span data-en="This request exceeds the agent's single-transaction authorisation, so it stops and waits for a human. The agent continues only after you approve — the final authorisation always stays with the human." data-zh="这笔请求超出 Agent 的单笔授权额度，因此停下来等人确认。你批准后 Agent 才继续，人始终握有最终授权权。">This request exceeds the agent's single-transaction authorisation, so it <b>stops and waits for a human</b>. The agent continues only after you approve — the final authorisation always stays with the human. · 这笔请求超出 Agent 的单笔授权额度，因此停下来等人确认。你批准后 Agent 才继续，人始终握有最终授权权。</span></div>
+    <div class="kv"><span class="k" data-en="Vendor" data-zh="供应商">Vendor 供应商</span><span class="v">${esc(m.vendor||'—')}</span></div>
+    <div class="kv"><span class="k" data-en="Item" data-zh="商品">Item 商品</span><span class="v">${esc(m.cart||'—')}</span></div>
+    <div class="kv"><span class="k" data-en="Amount" data-zh="金额">Amount 金额</span><span class="v">$${Number(m.amount_usd||0).toFixed(2)}</span></div>
+    <div class="kv"><span class="k" data-en="Engine verdict" data-zh="引擎判定">Engine verdict 引擎判定</span><span class="v">${esc(m.decision||'—')}</span></div>
+    <div class="kv"><span class="k" data-en="Status" data-zh="状态">Status 状态</span><span class="v"><span class="badge b-${String(m.status||'').toLowerCase()}">${esc(m.status)}</span></span></div>
     <div class="kv"><span class="k">trace_id</span><span class="v">${esc(m.trace_id||'—')}</span></div>
     <div class="layers">
       ${box('Intent layer 层','intent',L.intent)}${box('Cart layer 层','cart',L.cart)}${box('Payment layer 层','payment',L.payment)}
     </div>
-    ${m.order_id?`<div class="kv"><span class="k">PayPal order 订单</span><span class="v">${esc(m.order_id)}</span></div>`:''}`;
+    ${m.order_id?`<div class="kv"><span class="k" data-en="PayPal order" data-zh="订单">PayPal order 订单</span><span class="v">${esc(m.order_id)}</span></div>`:''}`;
 
   const foot = document.getElementById('mFoot');
   const canPay = m.order_id && m.status!=='COMPLETED' && m.status!=='REJECTED';
   foot.innerHTML = `
-    ${canPay?`<a class="btn" href="https://www.sandbox.paypal.com/checkoutnow?token=${esc(m.order_id)}" target="_blank">① Go to PayPal 去 PayPal 付款</a>`:''}
-    ${canPay?`<button class="btn gray" onclick="confirmPay()">② I have paid · capture 我已付款·捕获</button>`:''}
-    ${m.status!=='COMPLETED'&&m.status!=='REJECTED'?`<button class="btn danger" onclick="rejectIt()">✕ Reject 拒绝</button>`:''}
-    <button class="btn gray" onclick="closeModal()">Close 关闭</button>`;
+    ${canPay?`<a class="btn" href="https://www.sandbox.paypal.com/checkoutnow?token=${esc(m.order_id)}" target="_blank" data-en="① Go to PayPal" data-zh="① 去 PayPal 付款">① Go to PayPal 去 PayPal 付款</a>`:''}
+    ${canPay?`<button class="btn gray" onclick="confirmPay()" data-en="② I have paid · capture" data-zh="② 我已付款·捕获">② I have paid · capture 我已付款·捕获</button>`:''}
+    ${m.status!=='COMPLETED'&&m.status!=='REJECTED'?`<button class="btn danger" onclick="rejectIt()" data-en="✕ Reject" data-zh="✕ 拒绝">✕ Reject 拒绝</button>`:''}
+    <button class="btn gray" onclick="closeModal()" data-en="Close" data-zh="关闭">Close 关闭</button>`;
   document.getElementById('mask').classList.add('on');
 }
 function closeModal(){ document.getElementById('mask').classList.remove('on'); current=null; }
