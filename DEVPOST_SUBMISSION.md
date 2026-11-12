@@ -13,7 +13,7 @@
 
 **Target awards:** Best Use of Agentic Commerce ($5,000) · AG Grid sponsor prize
 
-**Video:** <!-- VIDEO_URL -->
+**Video:** https://youtu.be/ScaaMybIlpk
 
 **Sandbox buyer** (for judges who want to complete the loop themselves):
 `sb-mtet153479750@personal.example.com` — a PayPal *sandbox* buyer, so no real
@@ -336,4 +336,4 @@ data there already covers all three verdicts (`AUTO_APPROVE`, `REQUIRE_HUMAN`,
 | Security finding | Class F (silently-skipped category allowlist) — **found and fixed** |
 | Post-fix accuracy | 0 false rejects, 0 false allows |
 | PayPal paths | REST Orders v2 · Agent Toolkit · MCP (read-only allowlist + 9-tool denylist) |
-| Video | <!-- VIDEO_URL --> |
+| Video | https://youtu.be/ScaaMybIlpk |
