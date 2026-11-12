@@ -129,7 +129,7 @@ async function setConstraint(){
   msg.className="msg spin"; msg.textContent=MPLang.T("AI parsing… (function calling → structured rules)","AI 解析中…（function calling → 结构化规则）");
   try{
     const r = await fetch("/api/agent/parse",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({text, session_id:"web-constraint"})});
+      body:JSON.stringify({text, session_id:"web-constraint", lang: window.MPLang ? MPLang.get() : "both"})});
     const d = await r.json();
     if(d.decision!=="PARSED_CONSTRAINT"){
       msg.className="msg err";
@@ -161,7 +161,7 @@ async function tryPurchase(){
   document.getElementById("pOut").style.display="none";
   try{
     const r = await fetch("/api/agent/parse",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({text, session_id:"web-purchase-"+Date.now()})});
+      body:JSON.stringify({text, session_id:"web-purchase-"+Date.now(), lang: window.MPLang ? MPLang.get() : "both"})});
     const d = await r.json();
     document.getElementById("pBadge").innerHTML = `<span class="badge ${cls(d.decision)}">${label(d.decision)}</span>`;
     document.getElementById("insightText").textContent = d.insight || MPLang.T("No insight generated this time","本次未生成洞察");

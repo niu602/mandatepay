@@ -47,6 +47,7 @@ class AgentState(TypedDict, total=False):
     reason: str | None   # 引擎判定原因（供 explain 使用）
     insight: str         # 消费洞察一句话
     explanation: str     # 决策解释 + 可操作建议
+    lang: str            # 界面语言 both/en/zh —— 决定 reason 与 AI 文案的语言（W-15）
     # AI 推理轨迹（Demo 展示"AI 怎么想的"）
     reasoning: str       # 模型的自然语言推理
     tool_trace: list[str]  # 工具调用轨迹
@@ -114,7 +115,7 @@ def validate_node(state: AgentState) -> dict:
         daily_usd=store.sum_spent_amount(day_start),
     )
 
-    result = evaluate(req, constraint, spend=spend)
+    result = evaluate(req, constraint, spend=spend, lang=state.get("lang") or "zh")
     return {
         "decision": result.decision.value,
         "error": None if result.decision is not Decision.REJECT else result.reason,
@@ -137,6 +138,7 @@ def insight_node(state: AgentState) -> dict:
         state.get("constraint"),
         float(spend.get("monthly_usd", 0.0)),
         state.get("decision", ""),
+        state.get("lang") or "zh",
     )
     return {"insight": text}
 
@@ -155,6 +157,7 @@ def explain_node(state: AgentState) -> dict:
         state.get("decision", ""),
         state.get("reason"),
         float(spend.get("monthly_usd", 0.0)),
+        state.get("lang") or "zh",
     )
     return {"explanation": text}
 

@@ -12,11 +12,27 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from .llm_intent import _client, _invoke_with_retry
 from .models import Constraint, PurchaseRequest
 
 logger = logging.getLogger(__name__)
+
+# ── 界面语言（W-15）────────────────────────────────────────────
+# 只有 en 模式切英文：both（双语 UI）/ zh / 未传都保持中文，既有调用零改动。
+# 实测坑：LLM 即便被要求写英文，偶尔仍会吐中文；en 模式下这会直接破坏
+# 页面语言一致性，所以下面加一道轻量语言守卫，命中就回退英文模板。
+_CJK = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _is_en(lang: str) -> bool:
+    return lang == "en"
+
+
+def _language_mismatch(text: str, lang: str) -> bool:
+    """en 模式下文本里出现汉字 → 语言不一致，应丢弃 LLM 输出。"""
+    return _is_en(lang) and bool(_CJK.search(text or ""))
 
 
 def _llm_text(system: str, user: str) -> str | None:
@@ -94,12 +110,21 @@ _INSIGHT_SYSTEM = """你是 MandatePay 的消费洞察助手。基于给定的�
 - 语气简洁专业，一句话内说清，控制在 40 字以内
 - 不要重复"本月已花"以外的冗余信息"""
 
+_INSIGHT_SYSTEM_EN = """You are MandatePay's spending insight assistant. Given the budget and
+spend figures, write ONE short sentence in ENGLISH describing the financial
+position of this purchase. Rules:
+- Facts only (spent / budget / this purchase / remaining / whether it passes)
+- Concise and professional, one sentence, under 25 words
+- Never invent figures; use exactly the numbers provided
+- ENGLISH ONLY — do not use any Chinese characters"""
+
 
 def generate_insight_with_source(
     request: PurchaseRequest,
     constraint: Constraint | None,
     monthly_spent: float,
     decision: str,
+    lang: str = "zh",
 ) -> tuple[str, bool]:
     """生成一句消费洞察，**并标明这句是不是 LLM 写的**。
 
@@ -113,22 +138,45 @@ def generate_insight_with_source(
     """
     budget = constraint.monthly_budget_usd if constraint else 0.0
     remaining = budget - monthly_spent
+    en = _is_en(lang)
     # 兜底文案（无 LLM 时也能给出有信息量的一句）
-    verdict = {"AUTO_APPROVE": "会通过", "REQUIRE_HUMAN": "需你确认", "REJECT": "会被拦截"}.get(decision, "待定")
-    fallback = (
-        f"本月已花 ${monthly_spent:.0f}/${budget:.0f}，这笔 ${request.amount_usd:.0f} {verdict}，"
-        f"预算余额 ${remaining:.0f}"
-    )
+    if en:
+        verdict = {
+            "AUTO_APPROVE": "will pass",
+            "REQUIRE_HUMAN": "needs your approval",
+            "REJECT": "will be blocked",
+        }.get(decision, "is pending")
+        fallback = (
+            f"Spent ${monthly_spent:.0f} of ${budget:.0f} this month; "
+            f"this ${request.amount_usd:.0f} {verdict}, ${remaining:.0f} left."
+        )
+    else:
+        verdict = {"AUTO_APPROVE": "会通过", "REQUIRE_HUMAN": "需你确认", "REJECT": "会被拦截"}.get(decision, "待定")
+        fallback = (
+            f"本月已花 ${monthly_spent:.0f}/${budget:.0f}，这笔 ${request.amount_usd:.0f} {verdict}，"
+            f"预算余额 ${remaining:.0f}"
+        )
 
-    user = (
-        f"月度预算：${budget:.0f}\n"
-        f"本月已花费：${monthly_spent:.2f}\n"
-        f"本笔请求：{request.item}（{request.vendor}）${request.amount_usd:.2f}\n"
-        f"引擎判定：{decision}"
-    )
-    text = _llm_text(_INSIGHT_SYSTEM, user)
+    if en:
+        user = (
+            f"Monthly budget: ${budget:.0f}\n"
+            f"Spent this month: ${monthly_spent:.2f}\n"
+            f"This request: {request.item} ({request.vendor}) ${request.amount_usd:.2f}\n"
+            f"Engine decision: {decision}"
+        )
+    else:
+        user = (
+            f"月度预算：${budget:.0f}\n"
+            f"本月已花费：${monthly_spent:.2f}\n"
+            f"本笔请求：{request.item}（{request.vendor}）${request.amount_usd:.2f}\n"
+            f"引擎判定：{decision}"
+        )
+    text = _llm_text(_INSIGHT_SYSTEM_EN if en else _INSIGHT_SYSTEM, user)
     if text:
-        if _contradicts_decision(text, decision):
+        if _language_mismatch(text, lang):
+            # en 模式下 LLM 仍吐中文 → 丢弃，回退英文模板（不冒充 AI 输出）
+            logger.warning("[insight] en 模式下 LLM 返回中文，已回退英文模板：%s", text[:60])
+        elif _contradicts_decision(text, decision):
             # 文本与判定徽章矛盾 → 丢弃，用模板（verdict 与徽章一致）
             logger.warning(
                 "[insight] LLM 文本与判定 %s 矛盾，已回退模板：%s", decision, text[:60]
@@ -143,9 +191,10 @@ def generate_insight(
     constraint: Constraint | None,
     monthly_spent: float,
     decision: str,
+    lang: str = "zh",
 ) -> str:
     """生成一句消费洞察。失败/无 Key 时回退到模板。"""
-    return generate_insight_with_source(request, constraint, monthly_spent, decision)[0]
+    return generate_insight_with_source(request, constraint, monthly_spent, decision, lang)[0]
 
 
 # ── 决策解释（D8）─────────────────────────────────────────────
@@ -157,6 +206,15 @@ _EXPLAIN_SYSTEM = """你是 MandatePay 的约束解释助手。把引擎的判�
 - 用第二人称"你"，语气像一个靠谱的财务助理
 - 控制在 60 字以内，不要罗列规则原文"""
 
+_EXPLAIN_SYSTEM_EN = """You are MandatePay's constraint explanation assistant. Turn the engine's
+decision and reason into ONE actionable sentence in ENGLISH. Rules:
+- Verdict first, then the reason, then a concrete actionable suggestion
+- Only suggest a change that is actually needed: never suggest allowlisting a
+  vendor that is already allowlisted, nor raising a healthy budget
+- Second person ("you"), like a reliable finance assistant
+- Under 35 words, do not quote the raw rules
+- ENGLISH ONLY — do not use any Chinese characters"""
+
 
 def generate_explanation_with_source(
     request: PurchaseRequest,
@@ -164,32 +222,60 @@ def generate_explanation_with_source(
     decision: str,
     reason: str | None,
     monthly_spent: float = 0.0,
+    lang: str = "zh",
 ) -> tuple[str, bool]:
     """生成决策解释，**并标明这句是不是 LLM 写的**（同 `generate_insight_with_source`）。"""
     budget = constraint.monthly_budget_usd if constraint else 0.0
     threshold = constraint.single_tx_threshold_usd if constraint else 0.0
+    en = _is_en(lang)
     # 兜底：按 decision 给一个带建议的固定解释
-    if decision == "REJECT":
-        fb = f"这笔被拒：{reason or '违反约束'}。建议调整约束（提高预算/阈值）或改用白名单内的供应商。"
-    elif decision == "REQUIRE_HUMAN":
-        fb = f"{reason or '金额超过单笔阈值'}。金额偏大，建议你确认后再放行，或拆分订单降低单笔金额。"
-    elif decision == "AUTO_APPROVE":
-        fb = f"符合全部约束，将自动执行。本月已花 ${monthly_spent:.0f}/${budget:.0f}。"
+    if en:
+        if decision == "REJECT":
+            fb = (f"Rejected: {reason or 'a constraint was violated'}. "
+                  f"Adjust the constraints (raise the budget or threshold) or use an allowlisted vendor.")
+        elif decision == "REQUIRE_HUMAN":
+            fb = (f"{reason or 'The amount exceeds the per-transaction threshold'} "
+                  f"Confirm it yourself, or split the order into smaller amounts.")
+        elif decision == "AUTO_APPROVE":
+            fb = (f"All constraints satisfied — this will run automatically. "
+                  f"Spent ${monthly_spent:.0f} of ${budget:.0f} this month.")
+        else:
+            fb = reason or "Waiting for your next instruction."
+        if not constraint:
+            fb = "No constraints configured yet — the agent cannot spend autonomously. Set a budget and thresholds first."
     else:
-        fb = reason or "等待你的下一步指令。"
-    if not constraint:
-        fb = "尚未设定约束，Agent 无法自主花钱。请先设置预算与阈值。"
+        if decision == "REJECT":
+            fb = f"这笔被拒：{reason or '违反约束'}。建议调整约束（提高预算/阈值）或改用白名单内的供应商。"
+        elif decision == "REQUIRE_HUMAN":
+            fb = f"{reason or '金额超过单笔阈值'}。金额偏大，建议你确认后再放行，或拆分订单降低单笔金额。"
+        elif decision == "AUTO_APPROVE":
+            fb = f"符合全部约束，将自动执行。本月已花 ${monthly_spent:.0f}/${budget:.0f}。"
+        else:
+            fb = reason or "等待你的下一步指令。"
+        if not constraint:
+            fb = "尚未设定约束，Agent 无法自主花钱。请先设置预算与阈值。"
 
-    user = (
-        f"引擎判定：{decision}\n"
-        f"引擎原因：{reason or '（无）'}\n"
-        f"本笔请求：{request.item}（{request.vendor}）${request.amount_usd:.2f}\n"
-        f"当前约束：月度预算 ${budget:.0f}、单笔阈值 ${threshold:.0f}"
-        + (f"、本月已花 ${monthly_spent:.2f}" if monthly_spent else "")
-    )
-    text = _llm_text(_EXPLAIN_SYSTEM, user)
-    if text:
+    if en:
+        user = (
+            f"Engine decision: {decision}\n"
+            f"Engine reason: {reason or '(none)'}\n"
+            f"This request: {request.item} ({request.vendor}) ${request.amount_usd:.2f}\n"
+            f"Active constraints: monthly budget ${budget:.0f}, per-transaction threshold ${threshold:.0f}"
+            + (f", spent this month ${monthly_spent:.2f}" if monthly_spent else "")
+        )
+    else:
+        user = (
+            f"引擎判定：{decision}\n"
+            f"引擎原因：{reason or '（无）'}\n"
+            f"本笔请求：{request.item}（{request.vendor}）${request.amount_usd:.2f}\n"
+            f"当前约束：月度预算 ${budget:.0f}、单笔阈值 ${threshold:.0f}"
+            + (f"、本月已花 ${monthly_spent:.2f}" if monthly_spent else "")
+        )
+    text = _llm_text(_EXPLAIN_SYSTEM_EN if en else _EXPLAIN_SYSTEM, user)
+    if text and not _language_mismatch(text, lang):
         return text, True
+    if text:
+        logger.warning("[explain] en 模式下 LLM 返回中文，已回退英文模板：%s", text[:60])
     return fb, False
 
 
@@ -199,8 +285,9 @@ def generate_explanation(
     decision: str,
     reason: str | None,
     monthly_spent: float = 0.0,
+    lang: str = "zh",
 ) -> str:
     """生成决策解释（尤其擅长解释"为什么被拒"+ 给建议）。失败回退到模板。"""
     return generate_explanation_with_source(
-        request, constraint, decision, reason, monthly_spent
+        request, constraint, decision, reason, monthly_spent, lang
     )[0]

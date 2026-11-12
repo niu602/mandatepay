@@ -51,10 +51,20 @@ class EvaluationResult:
         return f"EvaluationResult({self.decision.value}, {self.reason!r})"
 
 
+def _msg(lang: str, zh: str, en: str) -> str:
+    """按界面语言选引擎理由。
+
+    默认中文 —— 所有既有调用点、测试与审计数据里的理由文案保持原样；
+    只有前端显式传 ``lang="en"`` 时才切英文（W-15 三态切换的 en 模式）。
+    """
+    return en if lang == "en" else zh
+
+
 def evaluate(
     request: PurchaseRequest,
     constraint: Constraint | None,
     spend: SpendContext | None = None,
+    lang: str = "zh",
 ) -> EvaluationResult:
     """对一笔采购请求做约束校验。
 
@@ -72,7 +82,10 @@ def evaluate(
     金额误判成超限（压测实测类 H）。
     """
     if constraint is None:
-        return EvaluationResult(Decision.REJECT, "未设定约束，拒绝执行")
+        return EvaluationResult(
+            Decision.REJECT,
+            _msg(lang, "未设定约束，拒绝执行", "No constraints configured — purchase rejected"),
+        )
 
     spend = spend or SpendContext()
     amount = round(request.amount_usd, 2)  # 按分取整，消除浮点尾数
@@ -81,7 +94,11 @@ def evaluate(
     if constraint.vendor_whitelist and not _in_list(request.vendor, constraint.vendor_whitelist):
         return EvaluationResult(
             Decision.REJECT,
-            f"供应商「{request.vendor}」不在白名单 {constraint.vendor_whitelist}",
+            _msg(
+                lang,
+                f"供应商「{request.vendor}」不在白名单 {constraint.vendor_whitelist}",
+                f"Vendor '{request.vendor}' is not in the allowlist {constraint.vendor_whitelist}",
+            ),
         )
 
     # 2. 品类白名单（硬上限）；请求没带品类时留到软上限处理（不静默放行）
@@ -92,30 +109,49 @@ def evaluate(
     ):
         return EvaluationResult(
             Decision.REJECT,
-            f"品类「{request.category}」不在白名单 {constraint.category_whitelist}",
+            _msg(
+                lang,
+                f"品类「{request.category}」不在白名单 {constraint.category_whitelist}",
+                f"Category '{request.category}' is not in the allowlist {constraint.category_whitelist}",
+            ),
         )
 
     # 3. 月度滚动预算（硬上限）：本月已花 + 本次 > 预算 → 拒
     if spend.monthly_usd + amount > constraint.monthly_budget_usd:
         return EvaluationResult(
             Decision.REJECT,
-            f"本月已花 ${spend.monthly_usd:.2f} + 本次 ${amount:.2f} "
-            f"超出月度预算 ${constraint.monthly_budget_usd:.2f}",
+            _msg(
+                lang,
+                f"本月已花 ${spend.monthly_usd:.2f} + 本次 ${amount:.2f} "
+                f"超出月度预算 ${constraint.monthly_budget_usd:.2f}",
+                f"Spent ${spend.monthly_usd:.2f} this month + ${amount:.2f} now "
+                f"exceeds the ${constraint.monthly_budget_usd:.2f} monthly budget",
+            ),
         )
 
     # 4. 单笔阈值（软上限）→ 需人工确认
     if amount > constraint.single_tx_threshold_usd:
         return EvaluationResult(
             Decision.REQUIRE_HUMAN,
-            f"${amount:.2f} 超过单笔阈值 ${constraint.single_tx_threshold_usd:.2f}，需人工确认",
+            _msg(
+                lang,
+                f"${amount:.2f} 超过单笔阈值 ${constraint.single_tx_threshold_usd:.2f}，需人工确认",
+                f"${amount:.2f} exceeds the ${constraint.single_tx_threshold_usd:.2f} "
+                f"per-transaction threshold — human confirmation required",
+            ),
         )
 
     # 5. 日累计阈值（软上限）→ 需人工确认
     if constraint.daily_threshold_usd > 0 and spend.daily_usd + amount > constraint.daily_threshold_usd:
         return EvaluationResult(
             Decision.REQUIRE_HUMAN,
-            f"今日已花 ${spend.daily_usd:.2f} + 本次 ${amount:.2f} "
-            f"超过日累计阈值 ${constraint.daily_threshold_usd:.2f}，需人工确认",
+            _msg(
+                lang,
+                f"今日已花 ${spend.daily_usd:.2f} + 本次 ${amount:.2f} "
+                f"超过日累计阈值 ${constraint.daily_threshold_usd:.2f}，需人工确认",
+                f"Spent ${spend.daily_usd:.2f} today + ${amount:.2f} now exceeds the "
+                f"${constraint.daily_threshold_usd:.2f} daily threshold — human confirmation required",
+            ),
         )
 
     # 6. 品类未知 + 约束限定了品类 → 无法校验品类白名单。
@@ -124,7 +160,15 @@ def evaluate(
     if constraint.category_whitelist and not request.category:
         return EvaluationResult(
             Decision.REQUIRE_HUMAN,
-            f"请求未指明品类，无法校验品类白名单 {constraint.category_whitelist}，需人工确认",
+            _msg(
+                lang,
+                f"请求未指明品类，无法校验品类白名单 {constraint.category_whitelist}，需人工确认",
+                f"Category missing — cannot verify against the allowlist "
+                f"{constraint.category_whitelist}; human confirmation required",
+            ),
         )
 
-    return EvaluationResult(Decision.AUTO_APPROVE, "符合全部约束，可自动执行")
+    return EvaluationResult(
+        Decision.AUTO_APPROVE,
+        _msg(lang, "符合全部约束，可自动执行", "All constraints satisfied — auto-approved"),
+    )

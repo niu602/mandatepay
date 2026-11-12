@@ -586,6 +586,8 @@ class PurchaseIn(BaseModel):
     category: str = ""
     recurring: bool = False
     session_id: str = "default"
+    # W-15：界面语言（both/en/zh）。只有 en 会让引擎理由与 AI 文案切英文。
+    lang: str = "zh"
 
 
 @app.post("/api/agent/requests")
@@ -630,7 +632,7 @@ def submit_purchase(body: PurchaseIn):
     store.save_request(req, _now_iso())
 
     constraint = store.load_latest_constraint()
-    result = evaluate(req, constraint)
+    result = evaluate(req, constraint, lang=body.lang)
 
     status_map = {
         "AUTO_APPROVE": MandateStatus.APPROVED,
@@ -701,11 +703,11 @@ def submit_purchase(body: PurchaseIn):
         try:
             fut_i = pool.submit(
                 generate_insight_with_source,
-                req, constraint, monthly_spent, result.decision.value,
+                req, constraint, monthly_spent, result.decision.value, body.lang,
             )
             fut_e = pool.submit(
                 generate_explanation_with_source,
-                req, constraint, result.decision.value, result.reason, monthly_spent,
+                req, constraint, result.decision.value, result.reason, monthly_spent, body.lang,
             )
             # 两个调用**并行**发起、各自独立计时，但**整段墙钟只等 budget 秒**
             # （先 wait 再逐个取结果；顺序取会让总耗时变成 2×budget）。
@@ -757,6 +759,8 @@ class NLIn(BaseModel):
 
     text: str
     session_id: str = "default"
+    # W-15：界面语言（both/en/zh），透传给 LangGraph 的 validate/insight/explain 节点
+    lang: str = "zh"
 
 
 @app.post("/api/agent/parse")
@@ -779,7 +783,7 @@ def agent_parse(body: NLIn):
 
     try:
         final = graph.invoke(
-            {"messages": [HumanMessage(content=body.text)]},
+            {"messages": [HumanMessage(content=body.text)], "lang": body.lang},
             {"configurable": {"thread_id": body.session_id}},
         )
     except Exception as exc:
