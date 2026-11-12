@@ -235,11 +235,13 @@ with a fixed check order and three-valued output, and we treat it as the part
 that must be right. Everything else — intent parsing, the two explanation nodes,
 even which catalog to query — is allowed to be fuzzy, because it can only ever
 *propose*. A rule-based parser would have been dramatically simpler to build, and
-it is the wrong trade: the demo's centrepiece is the agent discovering that
-*"Notion and Figma — buy the cheaper one"* requires querying two catalogs before
-it can decide, and then executing a three-step *query → compare → decide* loop
-through tool calls. That is reasoning, not classification, and the tool trace on
-screen is the evidence.
+it is the wrong trade: *"Notion and Figma — buy the cheaper one"* cannot be
+pattern-matched at all, because *"the cheaper one"* is not in the sentence — the
+agent has to query two catalogs, compare, and only then create the request, a
+*query → compare → decide* loop through tool calls. That is reasoning, not
+classification. The demo shows the same mechanism from the other side: the tool
+trace attached to every request is the visible proof that a purchase arrives as
+tool calls the constraint engine could inspect before any order reached PayPal.
 
 **Three integrations, deliberately not unified.** We wired REST Orders v2, the
 PayPal Agent Toolkit, *and* PayPal's MCP server — and kept all three, because
@@ -272,32 +274,38 @@ defined by code", §"Architecture"), `agent/constraints.py`, `agent/graph.py`,
 **MandatePay in one line:** a company card for AI agents — rules in plain
 English, spending in bounds, every dollar audited.
 
-**The demo is one continuous story, under three minutes, in five shots.**
+**The demo is one continuous story, 1:54, seven beats, every frame recorded on
+the live sandbox** — no mockups, no re-typed screens.
 
-1. **A one-sentence constraint becomes executable policy.** Type "two hundred a
-   month for SaaS, over fifty ask me first, only Notion and Figma" and watch it
-   parse into a structured rule set — budget, threshold, vendor allowlist,
-   category allowlist. The narration names the mechanism: function calling, not
-   keyword matching.
-2. **The agent reasons instead of classifying.** Give it "Notion and Figma — buy
-   the cheaper one". A rule parser dies here, because "the cheaper one" needs
-   both prices first. The tool trace shows `query_catalog(Notion)` →
-   `query_catalog(Figma)` → `create_purchase_request`, and the agent concludes
-   on its own.
-3. **A refusal explains itself.** Ask for Slack Pro at $15. The verdict is
-   `REJECT` — but the agent does not just say no. It shows where your budget
-   stands, which rule blocked the purchase, and the fix: add Slack to the
-   allowlist and it can charge the company card.
-4. **A human holds the last key.** The Figma request exceeds the threshold, so
-   the verdict is `REQUIRE_HUMAN` and the request waits on the approval desk
-   showing all three Mandate layers. The approval releases it, PayPal completes
-   the payment, and the shot cuts to the PayPal Developer Dashboard where the
-   *same* order shows `COMPLETED` — external proof that the loop is real, not
-   self-reported.
-5. **Everything is auditable.** The audit page shows every transaction as its
-   Intent / Cart / Payment triple under one `trace_id`, and the budget dashboard
-   shows used, remaining, and month-end projection — all computed, all
-   visible.
+1. **0:03 — A one-sentence constraint becomes executable policy.** "Two hundred
+   a month for SaaS, over fifty ask me first, only Notion and Figma" parses into
+   a structured rule set: monthly budget `$200`, per-transaction threshold `$50`,
+   vendor allowlist `Notion · Figma`, category allowlist `none`. The narration
+   names the mechanism: function calling, not keyword matching.
+2. **0:36 — A ten-dollar request approves itself and still explains why.** The
+   insight states the budget standing (`$10.00 of $200.00`), the explanation
+   states which rules were satisfied, and the Intent / Cart / Payment layers all
+   read `APPROVED` — automatic, and still legible after the fact.
+3. **0:49 — A refusal explains itself.** Slack Pro at `$15.00` hits the vendor
+   allowlist, and the verdict is `REJECT`. On screen: the insight ("would exceed
+   the remaining `$5.00` budget"), the explanation ("Slack is not on your
+   allowlist — request the vendor be added"), spent this month `$190.00`, three
+   layers `REJECTED`, and no order created. Directly below, the tool trace lists
+   every call the agent made for that request.
+4. **1:08 — Every attempt stays on record.** The approvals ledger shows three
+   Slack rejections next to approved Notion requests, and a request detail
+   resolves the transaction into its three layers under one `trace_id`.
+5. **1:18 — A human holds the last key.** The checkout page reads
+   `Waiting for payment…` with `$10.00 USD`; after approval the payment returns
+   `COMPLETED` with the order id, `PayerID` and `capture_id` — the agent could
+   not charge the card on its own.
+6. **1:28 — External proof, from PayPal's side.** The PayPal Developer
+   Dashboard API Call log shows `POST /v2/checkout/orders/{id}/capture` and the
+   order it captured, both `200 OK`. This is PayPal's record, not ours.
+7. **1:35 — Everything is auditable.** The audit page renders every transaction
+   as its Intent / Cart / Payment triple, and the budget dashboard shows
+   committed `$150.00`, remaining `$50.00`, used `75%`, month-end projection
+   `188%` against the `$200.00` cap, and spend by vendor.
 
 **Why the numbers land.** We put our own failures on screen, not just our
 successes: 650 judgements against three independent oracle implementations, and
