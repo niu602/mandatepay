@@ -123,10 +123,21 @@ async function loadConstraint() {
 
 function layerBox(enName, zhName, cls, obj, isLast){
   if(!obj) return `<div class="layer-box l-${cls}"><div class="lname" data-en="${enName}" data-zh="${zhName}">${enName} ${zhName}</div><div class="ltext">—</div></div>`;
+  // W-09：付款人身份只在 Payment 层展示。旧记录 payer_id 为空 → 不渲染这一行，
+  // 页面保持干净；带 data-en/data-zh，跟随本页的 i18n 三态切换。
+  let payerHtml = '';
+  if(cls === 'payment' && obj.payer_id){
+    const pid = esc(obj.payer_id || '');
+    const pem = esc(obj.payer_email || '');
+    const en = pem ? `Payer: ${pem} · PayerID: ${pid}` : `PayerID: ${pid}`;
+    const zh = pem ? `付款人: ${pem} · PayerID: ${pid}` : `PayerID: ${pid}`;
+    const both = `Payer 付款人: ${pem ? pem + ' · ' : ''}PayerID: ${pid}`;
+    payerHtml = `<br><span data-en="${en}" data-zh="${zh}">${both}</span>`;
+  }
   return `<div class="layer-box l-${cls}">
       <div class="lname" data-en="${enName}" data-zh="${zhName}">${enName} ${zhName} · ${esc(obj.status||'')}</div>
       <div class="ltext">${esc(obj.content||'')}</div>
-      <div class="lsub">uuid ${esc(obj.mandate_uuid||'')}<br>${esc((obj.created_at||'').slice(0,19).replace('T',' '))}</div>
+      <div class="lsub">uuid ${esc(obj.mandate_uuid||'')}<br>${esc((obj.created_at||'').slice(0,19).replace('T',' '))}${payerHtml}</div>
     </div>${isLast?'':'<div class="layer-connector">›</div>'}`;
 }
 

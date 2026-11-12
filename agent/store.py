@@ -338,6 +338,20 @@ class _Conn:
             existing = {r["name"] for r in cur.execute("PRAGMA table_info(mandates)").fetchall()}
             if "vendor" not in existing:
                 cur.execute("ALTER TABLE mandates ADD COLUMN vendor TEXT NOT NULL DEFAULT ''")
+        # mandates: 付款人身份（W-09）。旧记录自动落空串，审计页据此隐藏付款人行。
+        if self.is_pg:
+            cur.execute(
+                "ALTER TABLE mandates ADD COLUMN IF NOT EXISTS payer_id TEXT NOT NULL DEFAULT ''"
+            )
+            cur.execute(
+                "ALTER TABLE mandates ADD COLUMN IF NOT EXISTS payer_email TEXT NOT NULL DEFAULT ''"
+            )
+        else:
+            existing = {r["name"] for r in cur.execute("PRAGMA table_info(mandates)").fetchall()}
+            if "payer_id" not in existing:
+                cur.execute("ALTER TABLE mandates ADD COLUMN payer_id TEXT NOT NULL DEFAULT ''")
+            if "payer_email" not in existing:
+                cur.execute("ALTER TABLE mandates ADD COLUMN payer_email TEXT NOT NULL DEFAULT ''")
 
     def __exit__(self, *exc):
         try:
@@ -597,7 +611,7 @@ def save_request(r: PurchaseRequest, created_at: str | None = None) -> int:
 
 
 # ── MandateRecord（三层：intent / cart / payment 各一条）──────────────
-_COLS = "mandate_uuid, trace_id, layer, content, intent, cart, payment, status, decision, order_id, capture_id, amount_usd, vendor, created_at"
+_COLS = "mandate_uuid, trace_id, layer, content, intent, cart, payment, status, decision, order_id, capture_id, amount_usd, vendor, payer_id, payer_email, created_at"
 
 
 def _params(m: MandateRecord) -> tuple:
@@ -615,6 +629,8 @@ def _params(m: MandateRecord) -> tuple:
         m.capture_id,
         m.amount_usd,
         m.vendor,
+        m.payer_id,
+        m.payer_email,
         m.created_at,
     )
 
@@ -632,7 +648,8 @@ def save_mandate(m: MandateRecord) -> int:
                      intent=EXCLUDED.intent, cart=EXCLUDED.cart, payment=EXCLUDED.payment,
                      status=EXCLUDED.status, decision=EXCLUDED.decision,
                      order_id=EXCLUDED.order_id, capture_id=EXCLUDED.capture_id,
-                     amount_usd=EXCLUDED.amount_usd, vendor=EXCLUDED.vendor
+                     amount_usd=EXCLUDED.amount_usd, vendor=EXCLUDED.vendor,
+                     payer_id=EXCLUDED.payer_id, payer_email=EXCLUDED.payer_email
                    RETURNING id""",
                 _params(m),
             ).fetchone()
@@ -667,45 +684,56 @@ def update_mandate_status(
     status: str,
     order_id: str | None = None,
     capture_id: str | None = None,
+    payer_id: str | None = None,
+    payer_email: str | None = None,
 ) -> None:
     """按 mandate_uuid 定位，但**整笔交易三层同步更新状态**。
 
     三层 Mandate 属于同一笔交易，状态必须一致 —— 只更新一条会导致审计页出现
     「Payment 层 COMPLETED 但 Intent 层还 APPROVED」的假象。
+
+    W-09：payer_id / payer_email 走 COALESCE —— 捕获响应里没有付款人信息时
+    传 None，不覆盖已有的值（空串也按 None 处理，避免把已写入的身份清掉）。
     """
+    payer_id = payer_id or None
+    payer_email = payer_email or None
+    sets = (
+        "status=?, order_id=COALESCE(?, order_id), capture_id=COALESCE(?, capture_id), "
+        "payer_id=COALESCE(?, payer_id), payer_email=COALESCE(?, payer_email)"
+    )
+    vals = (status, order_id, capture_id, payer_id, payer_email)
     trace_id = _trace_of_mandate(mandate_uuid)
     with _Conn() as db:
         if trace_id:
-            db.cur().execute(
-                "UPDATE mandates SET status=?, order_id=COALESCE(?, order_id), capture_id=COALESCE(?, capture_id) WHERE trace_id=?",
-                (status, order_id, capture_id, trace_id),
-            )
+            db.cur().execute(f"UPDATE mandates SET {sets} WHERE trace_id=?", (*vals, trace_id))
         else:
-            db.cur().execute(
-                "UPDATE mandates SET status=?, order_id=COALESCE(?, order_id), capture_id=COALESCE(?, capture_id) WHERE mandate_uuid=?",
-                (status, order_id, capture_id, mandate_uuid),
-            )
+            db.cur().execute(f"UPDATE mandates SET {sets} WHERE mandate_uuid=?", (*vals, mandate_uuid))
 
 
 def update_mandate_by_order(
     order_id: str,
     status: str,
     capture_id: str | None = None,
+    payer_id: str | None = None,
+    payer_email: str | None = None,
 ) -> int:
-    """按 PayPal order_id 定位 mandate 并更新三层 —— Webhook 回调用。返回受影响行数。"""
+    """按 PayPal order_id 定位 mandate 并更新三层 —— Webhook 回调用。返回受影响行数。
+
+    W-09：新增可选 payer 参数，供 webhook 事件里带付款人信息时顺手写入；
+    现有调用点不传，行为与改造前一致（COALESCE 不覆盖）。
+    """
+    sets = (
+        "status=?, capture_id=COALESCE(?, capture_id), "
+        "payer_id=COALESCE(?, payer_id), payer_email=COALESCE(?, payer_email)"
+    )
+    vals = (status, capture_id, payer_id or None, payer_email or None)
     with _Conn() as db:
         cur = db.cur()
         row = cur.execute("SELECT trace_id FROM mandates WHERE order_id=?", (order_id,)).fetchone()
         if row and row["trace_id"]:
-            cur.execute(
-                "UPDATE mandates SET status=?, capture_id=COALESCE(?, capture_id) WHERE trace_id=?",
-                (status, capture_id, row["trace_id"]),
-            )
+            cur.execute(f"UPDATE mandates SET {sets} WHERE trace_id=?", (*vals, row["trace_id"]))
         else:
-            cur.execute(
-                "UPDATE mandates SET status=?, capture_id=COALESCE(?, capture_id) WHERE order_id=?",
-                (status, capture_id, order_id),
-            )
+            cur.execute(f"UPDATE mandates SET {sets} WHERE order_id=?", (*vals, order_id))
         return cur._cur.rowcount
 
 
@@ -749,6 +777,9 @@ def _aggregate(rows: list[dict]) -> list[dict]:
                 "capture_id": rep["capture_id"],
                 "amount_usd": float(rep.get("amount_usd") or 0),
                 "vendor": rep.get("vendor") or "",
+                # W-09：付款人身份。旧记录是空串，前端据此隐藏付款人行。
+                "payer_id": rep.get("payer_id") or "",
+                "payer_email": rep.get("payer_email") or "",
                 "created_at": rep["created_at"],
                 # 分层明细，供审计详情展示（前端可按需消费）
                 "layers": {
@@ -757,6 +788,8 @@ def _aggregate(rows: list[dict]) -> list[dict]:
                         "content": r.get("content", ""),
                         "status": r["status"],
                         "created_at": r["created_at"],
+                        "payer_id": r.get("payer_id") or "",
+                        "payer_email": r.get("payer_email") or "",
                     }
                     for r in grp
                 },

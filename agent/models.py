@@ -94,6 +94,10 @@ class MandateRecord(BaseModel):
     capture_id: str | None = None  # 捕获 id
     amount_usd: float = 0.0  # 本笔交易金额，供月度/日累计预算统计
     vendor: str = ""  # 供应商，供预算仪表盘按供应商聚合
+    # W-09：付款人身份。只在捕获那一刻才出现，下单时为空；
+    # 带默认值，build_mandate_trio 等所有既有构造点无需改动。
+    payer_id: str = ""  # PayPal PayerID（capture 响应 payment_source.paypal.account_id）
+    payer_email: str = ""  # 付款人邮箱（payment_source.paypal.email_address）
     created_at: str = Field(default_factory=_now_iso)
 
 

@@ -136,6 +136,50 @@ def create_order(item_name: str, amount_usd: float, quantity: int = 1) -> dict:
     }
 
 
+def _extract_payer(payload: dict) -> tuple[str, str]:
+    """从捕获响应里提取付款人身份，返回 ``(payer_id, payer_email)``。
+
+    ⚠️ 字段路径以**实测**为准，别照抄文档。2026-11-12 用沙箱订单
+    ``6S3278047H2709334``（Web 支付流、已 COMPLETED）核对的结果：
+
+    - ``payment_source`` 在**订单顶层**，结构是
+      ``payment_source.paypal.{account_id, email_address}`` ——
+      **没有** ``paypal.payer`` 这一层；
+      ``purchase_units[0].payment_source`` 是 ``null``
+    - 顶层另有旧字段 ``payer.{payer_id, email_address}``
+    - 测试卡直付订单的 ``payment_source`` 是 ``card``，没有付款人（正常）
+
+    所以按三条候选路径依次兜底。任何结构差异都只返回空串 ——
+    捕获链路不允许因为一个展示用字段崩掉。
+    """
+    if not isinstance(payload, dict):
+        return "", ""
+
+    def as_dict(v) -> dict:
+        return v if isinstance(v, dict) else {}
+
+    ps_paypal = as_dict(as_dict(payload.get("payment_source")).get("paypal"))
+    legacy = as_dict(payload.get("payer"))
+    units = payload.get("purchase_units")
+    pu0 = units[0] if isinstance(units, list) and units and isinstance(units[0], dict) else {}
+    nested = as_dict(as_dict(as_dict(pu0.get("payment_source")).get("paypal")).get("payer"))
+
+    payer_id = (
+        ps_paypal.get("account_id")
+        or legacy.get("payer_id")
+        or nested.get("account_id")
+        or nested.get("payer_id")
+        or ""
+    )
+    payer_email = (
+        ps_paypal.get("email_address")
+        or legacy.get("email_address")
+        or nested.get("email_address")
+        or ""
+    )
+    return str(payer_id), str(payer_email)
+
+
 def capture_order(order_id: str) -> dict:
     """捕获已批准的订单。买家在沙箱完成付款后调用。
 
@@ -165,16 +209,18 @@ def capture_order(order_id: str) -> dict:
     # → capture_id 恒为空 → 三层 Mandate 审计链丢失捕获 id。
     # 这里做兼容：有 raw 就从 raw 取，没有就按未包装的结构读。
     payload = result.get("raw") if isinstance(result.get("raw"), dict) else result
-    captures = (
-        payload.get("purchase_units", [{}])[0]
-        .get("payments", {})
-        .get("captures", [])
-    )
-    capture_id = captures[0].get("id") if captures else None
+    units = payload.get("purchase_units")
+    pu = units[0] if isinstance(units, list) and units and isinstance(units[0], dict) else {}
+    payments = pu.get("payments")
+    captures = (payments.get("captures") or []) if isinstance(payments, dict) else []
+    capture_id = captures[0].get("id") if captures and isinstance(captures[0], dict) else None
+    payer_id, payer_email = _extract_payer(payload)
     return {
         "order_id": order_id,
         "status": payload.get("status") or result.get("status"),
         "capture_id": capture_id,
+        "payer_id": payer_id,
+        "payer_email": payer_email,
         "amount": result.get("amount"),  # 包装层已格式化成 "USD 10.00"
         "raw": payload,
     }

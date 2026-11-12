@@ -233,7 +233,7 @@ async function run(){
   try{
     const r = await fetch("/api/mandates/confirm", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({order_id: oid})
+      body: JSON.stringify({order_id: oid, payer_id: q.get("PayerID") || undefined})
     });
     const d = await r.json();
     if(!r.ok){ throw new Error(d.detail || ("HTTP " + r.status)); }
@@ -1023,6 +1023,8 @@ class ConfirmIn(BaseModel):
 
     order_id: str
     mandate_uuid: str | None = None
+    # W-09：/paypal/return 回跳 URL 里带的 PayerID，作为捕获响应的冗余兜底
+    payer_id: str | None = None
 
 
 @app.post("/api/mandates/confirm")
@@ -1041,16 +1043,22 @@ def confirm_payment(body: ConfirmIn):
         raise HTTPException(status_code=400, detail=f"捕获失败（订单可能尚未付款）: {exc}")
 
     completed = res.get("status") == "COMPLETED"
+    # W-09：付款人身份以捕获响应为准；响应里没有时，用回跳 URL 带回来的 PayerID 兜底。
+    # 两者是同一个东西（account_id ↔ PayerID），互为冗余，来源不同而已。
+    payer_id = res.get("payer_id") or body.payer_id or None
+    payer_email = res.get("payer_email") or None
     if completed and body.mandate_uuid:
         store.update_mandate_status(
-            body.mandate_uuid, "COMPLETED", order_id=body.order_id, capture_id=res.get("capture_id")
+            body.mandate_uuid, "COMPLETED", order_id=body.order_id,
+            capture_id=res.get("capture_id"), payer_id=payer_id, payer_email=payer_email,
         )
     elif completed:
         # 没传 mandate_uuid 时，按 order_id 反查并更新
         for row in store.list_mandates(limit=200):
             if row.get("order_id") == body.order_id:
                 store.update_mandate_status(
-                    row["mandate_uuid"], "COMPLETED", order_id=body.order_id, capture_id=res.get("capture_id")
+                    row["mandate_uuid"], "COMPLETED", order_id=body.order_id,
+                    capture_id=res.get("capture_id"), payer_id=payer_id, payer_email=payer_email,
                 )
                 break
 
@@ -1059,4 +1067,6 @@ def confirm_payment(body: ConfirmIn):
         "status": res.get("status"),
         "capture_id": res.get("capture_id"),
         "completed": completed,
+        "payer_id": payer_id or "",
+        "payer_email": payer_email or "",
     }
