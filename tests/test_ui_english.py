@@ -330,3 +330,33 @@ def test_rendered_checker_skips_i18n_managed_nodes():
     nodes = visible_text_nodes(dom)
     assert "预算" not in nodes, "i18n 托管节点不应被当成纯中文区块"
     assert any("纯中文没有被托管" in n for n in nodes), "未托管节点必须仍被检查"
+
+
+# ──────────────────────────────────────────────────────
+# 5. W-11 工具轨迹 / 比价结果（三态 + 空态 + 降级路径）
+# ──────────────────────────────────────────────────────
+
+def test_tool_trace_block_is_i18n_managed():
+    """工具轨迹区块的静态文案必须全部走 data-en/data-zh，三态才切得动。"""
+    html = _read("constraints.html")
+    for el_id in ("traceCard", "traceList", "traceEmpty", "compareBox", "insightQuote"):
+        assert f'id="{el_id}"' in html, f"缺少工具轨迹区块元素 {el_id}"
+    block = html[html.index('id="traceCard"'):html.index("<!-- 中英切换 -->")]
+    for key in ("data-en=", "data-zh="):
+        assert block.count(key) >= 3, f"工具轨迹卡片缺少 {key}（标题/hint/空态都要托管）"
+    assert "No tool calls in this decision" in block, "空态英文文案缺失"
+    assert "本次决策没有工具调用" in block, "空态中文文案缺失"
+
+
+def test_tool_trace_renderer_contract():
+    """渲染函数必须覆盖：解析、比价、三态重渲染、目录降级、空态。"""
+    html = _read("constraints.html")
+    for token in (
+        "function buildTraceView(", "function renderToolTrace(", "function parseTraceLine(",
+        "function priceByVendor(", 'fetch("/api/catalog")',
+        '"mplangchange"', "LAST_TRACE_DATA", "d.tool_trace",
+    ):
+        assert token in html, f"工具轨迹渲染缺少 {token}"
+    # 独立的中文字面量按 W-10 要求转义，不能出现裸中文 key
+    assert "\\u4F9B\\u5E94\\u5546=" in html, "trace 参数标签未用 Unicode 转义"
+    assert "TRACE_LABELS" in html, "en 模式参数标签映射缺失"

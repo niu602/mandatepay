@@ -68,6 +68,32 @@
     .ok { color:#137333; } .err { color:#c5221f; }
     .spin { color:#5a6b82; }
     a.link { color:#0070ba; word-break:break-all; }
+    /* W-11 · 工具轨迹 / 比价结果 */
+    .trace-list { margin: 8px 0 0; padding: 0; list-style: none; }
+    .trace-item { display:flex; align-items:baseline; gap:10px; padding:7px 0;
+                  border-bottom:1px dashed #e6eaf2; font-size:13px; }
+    .trace-item:last-child { border-bottom:0; }
+    .trace-no { color:#8a94a6; font-size:12px; min-width:20px; flex-shrink:0; }
+    .trace-tool { font-family:ui-monospace,Menlo,Consolas,monospace; font-weight:700;
+                  color:#5b3fd6; background:#e6e0ff; border-radius:5px;
+                  padding:2px 7px; font-size:12px; flex-shrink:0; }
+    .trace-args { color:#2d2350; word-break:break-all; }
+    .trace-empty { color:#8a94a6; font-size:13px; padding:10px 0; }
+    .compare { margin-top:14px; }
+    .compare-head { font-size:12px; font-weight:700; color:#5a6b82;
+                    letter-spacing:.04em; margin-bottom:8px; }
+    .compare-row { display:flex; align-items:center; gap:12px; padding:8px 12px;
+                   border:1px solid #e3e9f2; border-radius:8px; margin-bottom:8px;
+                   font-size:13px; background:#fafbfd; flex-wrap:wrap; }
+    .compare-row.picked { background:#e6f4ea; border-color:#137333; }
+    .compare-vendor { font-weight:700; min-width:88px; }
+    .compare-price { color:#003087; font-weight:600; }
+    .compare-tag { margin-left:auto; font-size:12px; font-weight:700; }
+    .compare-tag.picked { color:#137333; }
+    .compare-tag.candidate { color:#5a6b82; }
+    .insight-quote { border-left:3px solid #7b61ff; background:#f6f4ff;
+                     padding:8px 12px; font-size:13px; color:#2d2350;
+                     margin-top:10px; border-radius:0 6px 6px 0; }
     nav.top { margin-bottom: 18px; font-size: 14px; }
     nav.top a { color:#0070ba; margin-right: 16px; text-decoration:none; }
   </style>
@@ -110,6 +136,16 @@
     </div>
   </div>
 
+  <!-- ③ 工具轨迹 / 比价结果（W-11）-->
+  <div class="card" id="traceCard" style="display:none">
+    <h2 data-en="③ Tool trace &amp; price comparison" data-zh="③ 工具轨迹与比价结果">③ Tool trace &amp; price comparison · 工具轨迹与比价结果</h2>
+    <div class="hint" data-en="Every tool call the model made, in order — the visible proof that the agent reasoned instead of just classifying." data-zh="模型按顺序发起的每一次工具调用 —— 这是「AI 在推理而非只做分类」的可见证据。">Every tool call the model made, in order — the visible proof that the agent reasoned instead of just classifying. · 模型按顺序发起的每一次工具调用 —— 这是「AI 在推理而非只做分类」的可见证据。</div>
+    <ul class="trace-list" id="traceList"></ul>
+    <div class="trace-empty" id="traceEmpty" hidden data-en="No tool calls in this decision — the rule engine decided it directly." data-zh="本次决策没有工具调用（规则引擎直接判定）。">No tool calls in this decision — the rule engine decided it directly. · 本次决策没有工具调用（规则引擎直接判定）。</div>
+    <div class="compare" id="compareBox"></div>
+    <div class="insight-quote" id="insightQuote" hidden></div>
+  </div>
+
   <!-- 中英切换 -->
   <script src="/static/js/i18n.js"></script>
 
@@ -121,6 +157,129 @@ function label(d){
   return {AUTO_APPROVE:MPLang.T("Auto-approved","自动通过"),REQUIRE_HUMAN:MPLang.T("Needs human","需人工确认"),REJECT:MPLang.T("Blocked","已拦截"),PARSED_CONSTRAINT:MPLang.T("Constraints set","约束已设定")}[d]||d||"";
 }
 function esc(s){return (s==null?"":String(s)).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+
+/* ── W-11 · 工具轨迹 / 比价结果 ──────────────────────────────────
+   实测 trace 格式（agent/llm_intent.py，执行顺序第 0 步核对）：
+     query_catalog(\u4F9B\u5E94\u5546=Notion)          ← 只有供应商名，没有价格
+     set_constraint(\u6708\u9884\u7B97=$200, ...)
+     create_purchase_request(Notion · Notion Plus · $10.00)  ← 含最终价格
+   候选价格不在 trace 里 → 用现有 GET /api/catalog 只读补，不改后端、
+   不在页面重做判定；目录也拿不到就只显示调用序列 + Insight 原文。
+   下面独立的中文字面量按 W-10 要求用 \\uXXXX 转义。 */
+const TRACE_LABELS = [
+  ["\u4F9B\u5E94\u5546=", "vendor="],
+  ["\u6708\u9884\u7B97=", "budget="],
+  ["\u5355\u7B14\u9608\u503C=", "per-tx="],
+  ["\u767D\u540D\u5355=", "allowlist="],
+  ["\u4E0D\u9650", "any"],
+  ["\u5168\u90E8", "all"],
+];
+let CATALOG_CACHE = null, LAST_TRACE_DATA = null;
+
+function traceArgs(args){
+  let out = args;
+  if(window.MPLang && window.MPLang.get() === "en"){
+    TRACE_LABELS.forEach(pair => { out = out.split(pair[0]).join(pair[1]); });
+  }
+  return out;
+}
+function parseTraceLine(s){
+  const m = /^([A-Za-z_][A-Za-z0-9_]*)\(([\s\S]*)\)$/.exec(s);
+  return m ? { tool: m[1], args: m[2] } : { tool: s, args: "" };
+}
+async function loadCatalog(){
+  if(CATALOG_CACHE) return CATALOG_CACHE;
+  try {
+    const r = await fetch("/api/catalog");
+    CATALOG_CACHE = await r.json();
+  } catch(e){ CATALOG_CACHE = { vendors: [], plans: [] }; }
+  return CATALOG_CACHE;
+}
+function priceByVendor(catalog){
+  const out = {};
+  ((catalog && catalog.vendors) || []).forEach(v => {
+    const name = (v.name || "").trim();
+    if(!name) return;
+    let best = null;
+    ((catalog && catalog.plans) || []).forEach(p => {
+      if(p.paypal_product_id !== v.paypal_product_id) return;
+      const n = Number(p.amount_usd);
+      if(!isNaN(n) && (best === null || n < best)) best = n;
+    });
+    if(best !== null) out[name.toLowerCase()] = best;
+  });
+  return out;
+}
+function buildTraceView(d, catalog){
+  const isEn = !!(window.MPLang && window.MPLang.get() === "en");
+  const trace = (Array.isArray(d.tool_trace) ? d.tool_trace : [])
+    .filter(x => typeof x === "string" && x.trim());
+  const parsed = trace.map(parseTraceLine);
+  const listHtml = parsed.map((p, i) =>
+    `<li class="trace-item"><span class="trace-no">${i+1}</span>` +
+    `<span class="trace-tool">${esc(p.tool)}</span>` +
+    `<span class="trace-args">${esc(traceArgs(p.args))}</span></li>`).join("");
+
+  // 候选来自 query_catalog；选中项来自 create_purchase_request 的第一段
+  const candidates = [];
+  parsed.forEach(p => {
+    if(p.tool !== "query_catalog") return;
+    const m = /(?:vendor=|\u4F9B\u5E94\u5546=)([^)]*)/.exec(p.args);
+    if(m){
+      const v = m[1].trim();
+      if(v && candidates.indexOf(v) < 0 && v !== "all" && v !== "\u5168\u90E8") candidates.push(v);
+    }
+  });
+  const picked = parsed.find(p => p.tool === "create_purchase_request");
+  let pickedVendor = "", pickedPrice = null;
+  if(picked){
+    pickedVendor = (picked.args.split("\u00B7")[0] || "").trim();
+    const pm = /\$([\d.]+)/.exec(picked.args);
+    if(pm) pickedPrice = Number(pm[1]);
+  }
+  const prices = priceByVendor(catalog);
+  let cmpHtml = "";
+  if(candidates.length){
+    const rows = candidates.map(v => {
+      const isPicked = pickedVendor && v.toLowerCase() === pickedVendor.toLowerCase();
+      let price = prices[v.toLowerCase()];
+      if(price == null && isPicked) price = pickedPrice;
+      const priceText = price == null ? "—" : `$${Number(price).toFixed(2)}`;
+      const tagCls = isPicked ? "picked" : "candidate";
+      const labelEn = isPicked ? "Picked" : "Candidate";
+      const labelZh = isPicked ? "\u5DF2\u9009\u4E2D" : "\u5019\u9009";
+      const labelText = isEn ? labelEn : `${labelEn} ${labelZh}`;
+      return `<div class="compare-row ${tagCls}"><span class="compare-vendor">${esc(v)}</span>` +
+             `<span class="compare-price">${esc(priceText)}</span>` +
+             `<span class="compare-tag ${tagCls}" data-en="${labelEn}" data-zh="${labelZh}">${esc(labelText)}</span></div>`;
+    }).join("");
+    const n = candidates.length;
+    const headEn = `Price comparison · ${n} candidates → picked ${pickedVendor || "—"}`;
+    const headZh = `\u6BD4\u4EF7\u7ED3\u679C · ${n} \u5BB6\u5019\u9009 → \u9009\u4E2D ${pickedVendor || "—"}`;
+    const headText = isEn ? headEn : `${headEn} ${headZh}`;
+    cmpHtml = `<div class="compare-head" data-en="${esc(headEn)}" data-zh="${esc(headZh)}">${esc(headText)}</div>` + rows;
+  }
+  // 降级：目录没给价格时，把 Insight 原文一并放进区块作为补充证据
+  const quote = (Object.keys(prices).length === 0 && d.insight) ? String(d.insight) : "";
+  return { trace, listHtml, cmpHtml, quote };
+}
+function renderToolTrace(d, catalog){
+  LAST_TRACE_DATA = d;
+  const v = buildTraceView(d, catalog);
+  const card = document.getElementById("traceCard");
+  card.style.display = "block";
+  document.getElementById("traceList").innerHTML = v.listHtml;
+  document.getElementById("traceEmpty").hidden = v.trace.length > 0;
+  document.getElementById("compareBox").innerHTML = v.cmpHtml;
+  const q = document.getElementById("insightQuote");
+  q.hidden = !v.quote;
+  q.textContent = v.quote;
+  if(window.MPLang && MPLang.apply) MPLang.apply(card);
+}
+// 三态切换时重渲染：参数标签与比价卡文案都要跟着变
+document.addEventListener("mplangchange", () => {
+  if(LAST_TRACE_DATA) renderToolTrace(LAST_TRACE_DATA, CATALOG_CACHE || {vendors:[], plans:[]});
+});
 
 async function setConstraint(){
   const text = document.getElementById("cText").value.trim();
@@ -159,7 +318,9 @@ async function tryPurchase(){
   if(!text){ msg.className="msg err"; msg.textContent=MPLang.T("Please describe a purchase first","请先描述一笔采购"); return; }
   msg.className="msg spin"; msg.textContent=MPLang.T("Agent working… (validate → insight → explain → approve)","Agent 处理中…（校验 → 洞察 → 解释 → 授权）");
   document.getElementById("pOut").style.display="none";
+  document.getElementById("traceCard").style.display="none";
   try{
+    const catalogPromise = loadCatalog();
     const r = await fetch("/api/agent/parse",{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({text, session_id:"web-purchase-"+Date.now(), lang: window.MPLang ? MPLang.get() : "both"})});
     const d = await r.json();
@@ -188,6 +349,7 @@ async function tryPurchase(){
     }
     document.getElementById("payDetail").innerHTML = det;
     document.getElementById("pOut").style.display="block";
+    renderToolTrace(d, await catalogPromise);
     msg.className="msg ok"; msg.textContent=MPLang.T("✓ Done — see the AI insight and explanation below","✓ 处理完成 —— 请看下面的 AI 洞察与决策解释");
   }catch(e){ msg.className="msg err"; msg.textContent=MPLang.T("Request failed: "+e,"请求失败："+e); }
 }
