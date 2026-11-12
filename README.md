@@ -68,6 +68,14 @@ Then create a **sandbox buyer account** to pay with:
 - **Sandbox test card** (works at the API level, used by the automated regression test):
   VISA `4333134069790191`, expiry `11/31` (i.e. 2031-11), any 3-digit CSC.
 
+> **Ready-made sandbox buyer (for judges):** `sb-mtet153479750@personal.example.com`
+> — a PayPal *sandbox* buyer, so no real money can move. It pays from its sandbox
+> balance directly, which keeps the checkout on the sandbox buyer path instead of
+> triggering PayPal's new-account creation flow. Find it in the PayPal Developer
+> Dashboard → Sandbox → Accounts if you need to complete the "Approve & pay"
+> step yourself. No password needed for the hosted demo — the approval step
+> happens on PayPal's own checkout page.
+
 ### 3. Configure
 
 ```bash
